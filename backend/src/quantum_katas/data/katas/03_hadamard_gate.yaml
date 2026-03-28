@@ -1,0 +1,77 @@
+id: "03-hadamard-gate"
+title: "アダマールゲート"
+description: |
+  アダマール (Hadamard) ゲートを使って量子ビットの重ね合わせ状態を作成します。
+  量子コンピューティングの核心的な概念を体験しましょう。
+difficulty: 3
+category: "basics"
+template_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+
+  # アダマールゲートを適用して重ね合わせ状態を作成してください
+  circuit = cirq.Circuit([
+      # YOUR CODE HERE
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  print(result)
+solution_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+
+  circuit = cirq.Circuit([
+      cirq.H(q),
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  print(result)
+validation_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+  circuit = cirq.Circuit([
+      cirq.H(q),
+      cirq.measure(q, key='result'),
+  ])
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=1000)
+  measurements = result.measurements['result'].flatten()
+  zeros = sum(1 for m in measurements if m == 0)
+  ones = sum(1 for m in measurements if m == 1)
+  ratio = zeros / len(measurements)
+  assert 0.35 < ratio < 0.65, f"0と1がほぼ均等に出現すべきです (0の割合: {ratio:.2f})"
+  print("PASSED")
+hints:
+  - "アダマールゲートは cirq.H(qubit) で適用できます"
+  - "H|0⟩ = (|0⟩ + |1⟩)/√2 — 0と1が50%ずつ出現する重ね合わせ状態になります"
+  - "cirq.H(q) を測定の前に配置してください。1000回測定すると約500回ずつ0と1が出ます"
+prerequisites:
+  - "02-pauli-x-gate"
+explanation: |
+  ## アダマール (Hadamard) ゲート
+
+  アダマールゲートは量子ビットを **重ね合わせ状態** にします:
+  - |0⟩ → (|0⟩ + |1⟩) / √2
+  - |1⟩ → (|0⟩ - |1⟩) / √2
+
+  これは量子コンピューティングで最も重要なゲートの一つです。
+
+  ### 行列表現
+  ```
+  H = (1/√2) | 1   1 |
+              | 1  -1 |
+  ```
+
+  ### 回路
+  ```
+  0: ───H───M('result')───
+  ```
+
+  重ね合わせ状態を測定すると、50%の確率で0、50%の確率で1が得られます。

@@ -1,0 +1,85 @@
+id: "07-cnot-gate"
+title: "CNOTゲート"
+description: |
+  制御NOT (CNOT) ゲートを使って2量子ビット間の相互作用を学びます。
+  CNOTは量子もつれを生成するための基本的なゲートです。
+difficulty: 7
+category: "entanglement"
+template_code: |
+  import cirq
+
+  q0, q1 = cirq.LineQubit.range(2)
+
+  # q0を制御ビット、q1をターゲットビットとするCNOTゲートを適用してください
+  # まずq0にXゲートを適用して |1⟩ にしてから、CNOTを適用します
+  circuit = cirq.Circuit([
+      cirq.X(q0),
+      # YOUR CODE HERE
+      cirq.measure(q0, key='control'),
+      cirq.measure(q1, key='target'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+solution_code: |
+  import cirq
+
+  q0, q1 = cirq.LineQubit.range(2)
+
+  circuit = cirq.Circuit([
+      cirq.X(q0),
+      cirq.CNOT(q0, q1),
+      cirq.measure(q0, key='control'),
+      cirq.measure(q1, key='target'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+validation_code: |
+  import cirq
+
+  q0, q1 = cirq.LineQubit.range(2)
+  circuit = cirq.Circuit([
+      cirq.X(q0),
+      cirq.CNOT(q0, q1),
+      cirq.measure(q0, key='control'),
+      cirq.measure(q1, key='target'),
+  ])
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  control = result.measurements['control'].flatten()
+  target = result.measurements['target'].flatten()
+  assert all(c == 1 for c in control), "制御ビットはXゲート適用後なので常に1のはずです"
+  assert all(t == 1 for t in target), "制御ビットが1のとき、CNOTによりターゲットが反転して1になるはずです"
+  print("PASSED")
+hints:
+  - "CNOTゲートは cirq.CNOT(control, target) で適用できます"
+  - "CNOT は制御ビットが |1⟩ のときだけターゲットを反転します"
+  - "cirq.CNOT(q0, q1) を追加してください。q0=1 なので q1 も反転して 1 になります"
+prerequisites:
+  - "06-multi-qubit"
+explanation: |
+  ## CNOT (制御NOT) ゲート
+
+  CNOTゲートは2量子ビットゲートです:
+  - **制御ビットが |0⟩**: ターゲットは変化しない
+  - **制御ビットが |1⟩**: ターゲットが反転 (NOT)
+
+  ### 真理値表
+  ```
+  |00⟩ → |00⟩
+  |01⟩ → |01⟩
+  |10⟩ → |11⟩  ← 制御が1なのでターゲット反転
+  |11⟩ → |10⟩  ← 制御が1なのでターゲット反転
+  ```
+
+  ### 回路図
+  ```
+  q0: ───X───@───M('control')───
+              |
+  q1: ───────X───M('target')────
+  ```
+
+  `@` は制御ビット、`X` はターゲット (反転) を表します。

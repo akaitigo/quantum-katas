@@ -1,0 +1,84 @@
+id: "06-multi-qubit"
+title: "複数量子ビット"
+description: |
+  2量子ビット系を作成し、それぞれ独立に操作・測定します。
+  複数量子ビットの基本的な扱い方を学びましょう。
+difficulty: 6
+category: "basics"
+template_code: |
+  import cirq
+
+  # 2つの量子ビットを作成してください
+  # YOUR CODE HERE
+
+  # q0にXゲート、q1にHゲートを適用してください
+  circuit = cirq.Circuit([
+      # YOUR CODE HERE
+      cirq.measure(q0, key='q0'),
+      cirq.measure(q1, key='q1'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+solution_code: |
+  import cirq
+
+  q0, q1 = cirq.LineQubit.range(2)
+
+  circuit = cirq.Circuit([
+      cirq.X(q0),
+      cirq.H(q1),
+      cirq.measure(q0, key='q0'),
+      cirq.measure(q1, key='q1'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+validation_code: |
+  import cirq
+
+  q0, q1 = cirq.LineQubit.range(2)
+  circuit = cirq.Circuit([
+      cirq.X(q0),
+      cirq.H(q1),
+      cirq.measure(q0, key='q0'),
+      cirq.measure(q1, key='q1'),
+  ])
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  q0_measurements = result.measurements['q0'].flatten()
+  q1_measurements = result.measurements['q1'].flatten()
+  assert all(m == 1 for m in q0_measurements), "q0はXゲート適用後なので常に1を返すべきです"
+  q1_zeros = sum(1 for m in q1_measurements if m == 0)
+  ratio = q1_zeros / len(q1_measurements)
+  assert 0.25 < ratio < 0.75, f"q1はHゲート適用後なので0と1がほぼ均等に出るべきです (0の割合: {ratio:.2f})"
+  print("PASSED")
+hints:
+  - "cirq.LineQubit.range(2) で2つの量子ビットを一度に作成できます"
+  - "q0, q1 = cirq.LineQubit.range(2) でアンパックしましょう"
+  - "cirq.X(q0) と cirq.H(q1) を回路に追加してください。q0は常に1、q1は0/1がランダムになります"
+prerequisites:
+  - "04-measurement-statistics"
+explanation: |
+  ## 複数量子ビット系
+
+  複数の量子ビットを使う場合、それぞれ独立に操作できます。
+
+  ### 量子ビットの作成
+  ```python
+  q0, q1 = cirq.LineQubit.range(2)
+  ```
+
+  ### テンソル積
+  2量子ビット系の状態は各量子ビットのテンソル積で表されます:
+  ```
+  |ψ⟩ = |ψ₀⟩ ⊗ |ψ₁⟩
+  ```
+
+  この例では:
+  - q0: X|0⟩ = |1⟩ (常に1)
+  - q1: H|0⟩ = (|0⟩+|1⟩)/√2 (50%で0、50%で1)
+
+  各量子ビットが独立なので、それぞれ別のキーで測定します。

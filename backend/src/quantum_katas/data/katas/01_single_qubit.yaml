@@ -1,0 +1,62 @@
+id: "01-single-qubit"
+title: "量子ビットの基礎"
+description: |
+  Cirqを使って1量子ビットを作成し、測定する基本的な量子回路を構築します。
+  量子コンピューティングの最も基本的な操作を学びましょう。
+difficulty: 1
+category: "basics"
+template_code: |
+  import cirq
+
+  # 量子ビットを1つ作成してください
+  # YOUR CODE HERE
+
+  # 量子ビットを測定する回路を作成してください
+  # YOUR CODE HERE
+
+  # シミュレーターで回路を実行し、結果を表示してください
+  sim = cirq.Simulator()
+  # YOUR CODE HERE
+solution_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+  circuit = cirq.Circuit([
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+validation_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+  circuit = cirq.Circuit([
+      cirq.measure(q, key='result'),
+  ])
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  measurements = result.measurements['result']
+  assert all(m == 0 for m in measurements.flatten()), "初期状態の量子ビットは常に0を返すべきです"
+  print("PASSED")
+hints:
+  - "cirq.LineQubit(0) で量子ビットを作成できます"
+  - "cirq.Circuit([cirq.measure(q, key='result')]) で測定回路を作成します"
+  - "sim.run(circuit, repetitions=10) でシミュレーションを実行し、print(result) で結果を表示します"
+prerequisites: []
+explanation: |
+  ## 量子ビット (Qubit)
+
+  量子ビットは量子コンピューティングの基本単位です。
+  古典的なビット (0 or 1) と異なり、量子ビットは **重ね合わせ状態** を取ることができます。
+
+  Cirqでは `cirq.LineQubit(0)` で量子ビットを作成します。
+  初期状態は |0⟩ であり、何もゲートを適用せずに測定すると常に 0 が返ります。
+
+  ### 回路の構造
+  ```
+  0: ───M('result')───
+  ```
+
+  `M` は測定 (Measurement) を表します。

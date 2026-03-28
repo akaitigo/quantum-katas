@@ -1,0 +1,93 @@
+id: "08-bell-state"
+title: "ベル状態"
+description: |
+  アダマールゲートとCNOTゲートを組み合わせて、最大量子もつれ状態である
+  ベル状態 (Bell State) を生成します。
+difficulty: 8
+category: "entanglement"
+template_code: |
+  import cirq
+
+  q0, q1 = cirq.LineQubit.range(2)
+
+  # ベル状態 |Φ+⟩ = (|00⟩ + |11⟩)/√2 を作成してください
+  # ヒント: H ゲートと CNOT ゲートを組み合わせます
+  circuit = cirq.Circuit([
+      # YOUR CODE HERE
+      cirq.measure(q0, q1, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  print(result)
+solution_code: |
+  import cirq
+
+  q0, q1 = cirq.LineQubit.range(2)
+
+  circuit = cirq.Circuit([
+      cirq.H(q0),
+      cirq.CNOT(q0, q1),
+      cirq.measure(q0, q1, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  print(result)
+validation_code: |
+  import cirq
+
+  q0, q1 = cirq.LineQubit.range(2)
+  circuit = cirq.Circuit([
+      cirq.H(q0),
+      cirq.CNOT(q0, q1),
+      cirq.measure(q0, q1, key='result'),
+  ])
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=1000)
+  measurements = result.measurements['result']
+  count_00 = 0
+  count_11 = 0
+  count_other = 0
+  for row in measurements:
+      if row[0] == 0 and row[1] == 0:
+          count_00 += 1
+      elif row[0] == 1 and row[1] == 1:
+          count_11 += 1
+      else:
+          count_other += 1
+  assert count_other == 0, f"|01⟩ や |10⟩ は出現しないはずです (出現回数: {count_other})"
+  ratio = count_00 / (count_00 + count_11)
+  assert 0.35 < ratio < 0.65, f"|00⟩ と |11⟩ がほぼ均等に出現すべきです (|00⟩の割合: {ratio:.2f})"
+  print("PASSED")
+hints:
+  - "まず q0 にアダマールゲートを適用して重ね合わせ状態にします"
+  - "次に CNOT(q0, q1) でq0の状態をq1にコピーします"
+  - "cirq.H(q0) → cirq.CNOT(q0, q1) の順で適用すると、(|00⟩ + |11⟩)/√2 のベル状態が得られます"
+prerequisites:
+  - "07-cnot-gate"
+explanation: |
+  ## ベル状態 (Bell State)
+
+  ベル状態は2量子ビットの最大エンタングルメント (もつれ) 状態です。
+
+  ### |Φ+⟩ の生成
+  ```
+  H|0⟩ ⊗ |0⟩ = (|0⟩+|1⟩)/√2 ⊗ |0⟩ = (|00⟩+|10⟩)/√2
+  ```
+  ここに CNOT を適用:
+  ```
+  CNOT(|00⟩+|10⟩)/√2 = (|00⟩+|11⟩)/√2 = |Φ+⟩
+  ```
+
+  ### 量子もつれの特徴
+  - q0 を測定して 0 なら、q1 も必ず 0
+  - q0 を測定して 1 なら、q1 も必ず 1
+  - |01⟩ や |10⟩ は絶対に出現しない
+
+  ### 回路
+  ```
+  q0: ───H───@───M('result')───
+              |
+  q1: ───────X───M──────────────
+  ```

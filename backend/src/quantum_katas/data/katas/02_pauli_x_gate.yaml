@@ -1,0 +1,74 @@
+id: "02-pauli-x-gate"
+title: "パウリXゲート"
+description: |
+  パウリXゲート（NOTゲート）を使ってビット反転を行います。
+  古典的なNOT演算の量子版を学びましょう。
+difficulty: 2
+category: "basics"
+template_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+
+  # パウリXゲートを適用して |0⟩ を |1⟩ に反転させてください
+  circuit = cirq.Circuit([
+      # YOUR CODE HERE
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+solution_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+
+  circuit = cirq.Circuit([
+      cirq.X(q),
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+validation_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+  circuit = cirq.Circuit([
+      cirq.X(q),
+      cirq.measure(q, key='result'),
+  ])
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  measurements = result.measurements['result']
+  assert all(m == 1 for m in measurements.flatten()), "Xゲート適用後は常に1を返すべきです"
+  print("PASSED")
+hints:
+  - "パウリXゲートは cirq.X(qubit) で適用できます"
+  - "Xゲートは |0⟩ → |1⟩、|1⟩ → |0⟩ の変換を行います"
+  - "cirq.X(q) を測定の前に配置してください"
+prerequisites:
+  - "01-single-qubit"
+explanation: |
+  ## パウリXゲート (NOT Gate)
+
+  パウリXゲートは量子ビットの状態を反転させます:
+  - |0⟩ → |1⟩
+  - |1⟩ → |0⟩
+
+  これは古典的なNOT演算と同等です。
+
+  ### 行列表現
+  ```
+  X = | 0  1 |
+      | 1  0 |
+  ```
+
+  ### 回路
+  ```
+  0: ───X───M('result')───
+  ```
+
+  Xゲートを適用した後に測定すると、常に 1 が得られます。
