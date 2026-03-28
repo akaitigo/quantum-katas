@@ -33,17 +33,11 @@ solution_code: |
   result = sim.run(circuit, repetitions=10)
   print(result)
 validation_code: |
-  import cirq
-
-  q = cirq.LineQubit(0)
-  circuit = cirq.Circuit([
-      cirq.X(q),
-      cirq.measure(q, key='result'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=100)
-  measurements = result.measurements['result']
-  assert all(m == 1 for m in measurements.flatten()), "Xゲート適用後は常に1を返すべきです"
+  # Validation: re-run the user's circuit to verify
+  _v_sim = cirq.Simulator()
+  _v_result = _v_sim.run(circuit, repetitions=100)
+  _v_measurements = _v_result.measurements['result']
+  assert all(m == 1 for m in _v_measurements.flatten()), "Xゲート適用後は常に1を返すべきです"
   print("PASSED")
 hints:
   - "パウリXゲートは cirq.X(qubit) で適用できます"

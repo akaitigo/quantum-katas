@@ -62,21 +62,11 @@ solution_code: |
   result = sim.run(circuit, repetitions=10)
   print(result)
 validation_code: |
-  import cirq
-
-  input_qubit = cirq.LineQubit(0)
-  output_qubit = cirq.LineQubit(1)
-  circuit = cirq.Circuit()
-  circuit.append(cirq.X(output_qubit))
-  circuit.append(cirq.H(input_qubit))
-  circuit.append(cirq.H(output_qubit))
-  circuit.append(cirq.CNOT(input_qubit, output_qubit))
-  circuit.append(cirq.H(input_qubit))
-  circuit.append(cirq.measure(input_qubit, key='result'))
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=100)
-  measurements = result.measurements['result'].flatten()
-  assert all(m == 1 for m in measurements), "バランス関数のオラクルでは入力量子ビットは常に1を返すべきです"
+  # Validation: re-run the user's circuit to verify
+  _v_sim = cirq.Simulator()
+  _v_result = _v_sim.run(circuit, repetitions=100)
+  _v_measurements = _v_result.measurements['result'].flatten()
+  assert all(m == 1 for m in _v_measurements), "バランス関数のオラクルでは入力量子ビットは常に1を返すべきです"
   print("PASSED")
 hints:
   - "Step 1: cirq.X(output_qubit) で出力を |1⟩ にし、Step 2: 両方に cirq.H() を適用します"

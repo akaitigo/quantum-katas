@@ -57,6 +57,61 @@ class TestSolutionValidation:
         result = validate_submission("03-hadamard-gate", kata.solution_code)
         assert result.passed is True, f"Kata 03 solution failed: {result.message}"
 
+    @pytest.mark.slow
+    def test_kata_04_solution_passes(self) -> None:
+        kata = get_kata_raw("04-measurement-statistics")
+        assert kata is not None
+        result = validate_submission("04-measurement-statistics", kata.solution_code)
+        assert result.passed is True, f"Kata 04 solution failed: {result.message}"
+
+    @pytest.mark.slow
+    def test_kata_05_solution_passes(self) -> None:
+        kata = get_kata_raw("05-pauli-z-gate")
+        assert kata is not None
+        result = validate_submission("05-pauli-z-gate", kata.solution_code)
+        assert result.passed is True, f"Kata 05 solution failed: {result.message}"
+
+    @pytest.mark.slow
+    def test_kata_06_solution_passes(self) -> None:
+        kata = get_kata_raw("06-multi-qubit")
+        assert kata is not None
+        result = validate_submission("06-multi-qubit", kata.solution_code)
+        assert result.passed is True, f"Kata 06 solution failed: {result.message}"
+
+    @pytest.mark.slow
+    def test_kata_07_solution_passes(self) -> None:
+        kata = get_kata_raw("07-cnot-gate")
+        assert kata is not None
+        result = validate_submission("07-cnot-gate", kata.solution_code)
+        assert result.passed is True, f"Kata 07 solution failed: {result.message}"
+
+    @pytest.mark.slow
+    def test_kata_08_solution_passes(self) -> None:
+        kata = get_kata_raw("08-bell-state")
+        assert kata is not None
+        result = validate_submission("08-bell-state", kata.solution_code)
+        assert result.passed is True, f"Kata 08 solution failed: {result.message}"
+
+    @pytest.mark.slow
+    def test_kata_09_solution_passes(self) -> None:
+        kata = get_kata_raw("09-quantum-teleportation")
+        assert kata is not None
+        result = validate_submission("09-quantum-teleportation", kata.solution_code)
+        assert result.passed is True, f"Kata 09 solution failed: {result.message}"
+
+    @pytest.mark.slow
+    def test_kata_10_solution_passes(self) -> None:
+        kata = get_kata_raw("10-deutsch-jozsa")
+        assert kata is not None
+        result = validate_submission("10-deutsch-jozsa", kata.solution_code)
+        assert result.passed is True, f"Kata 10 solution failed: {result.message}"
+
+    @pytest.mark.slow
+    def test_wrong_code_does_not_pass(self) -> None:
+        """Ensure that incorrect code does NOT pass validation (regression for C-1)."""
+        result = validate_submission("02-pauli-x-gate", "import cirq\nprint('wrong')")
+        assert result.passed is False, "Incorrect code should not pass validation"
+
 
 class TestSandboxSecurity:
     """Security tests for the code execution sandbox."""
@@ -80,4 +135,12 @@ class TestSandboxSecurity:
 
     def test_eval_blocked(self) -> None:
         result = validate_submission("01-single-qubit", "eval('__import__(\"os\")')")
+        assert result.passed is False
+
+    def test_metaclass_class_blocked(self) -> None:
+        result = validate_submission("01-single-qubit", "x = ''.__class__.__bases__")
+        assert result.passed is False
+
+    def test_subclasses_blocked(self) -> None:
+        result = validate_submission("01-single-qubit", "x = object.__subclasses__()")
         assert result.passed is False

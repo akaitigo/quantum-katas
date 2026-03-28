@@ -62,24 +62,11 @@ solution_code: |
   result = sim.run(circuit, repetitions=10)
   print(result)
 validation_code: |
-  import cirq
-
-  alice_msg, alice_bell, bob_bell = cirq.LineQubit.range(3)
-  circuit = cirq.Circuit()
-  circuit.append(cirq.X(alice_msg))
-  circuit.append(cirq.H(alice_bell))
-  circuit.append(cirq.CNOT(alice_bell, bob_bell))
-  circuit.append(cirq.CNOT(alice_msg, alice_bell))
-  circuit.append(cirq.H(alice_msg))
-  circuit.append(cirq.measure(alice_msg, key='alice_msg'))
-  circuit.append(cirq.measure(alice_bell, key='alice_bell'))
-  circuit.append(cirq.CNOT(alice_bell, bob_bell))
-  circuit.append(cirq.CZ(alice_msg, bob_bell))
-  circuit.append(cirq.measure(bob_bell, key='bob_result'))
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=100)
-  bob_measurements = result.measurements['bob_result'].flatten()
-  assert all(m == 1 for m in bob_measurements), "Bobは常に|1⟩を受け取るべきです（Aliceが|1⟩を送信したため）"
+  # Validation: re-run the user's circuit to verify
+  _v_sim = cirq.Simulator()
+  _v_result = _v_sim.run(circuit, repetitions=100)
+  _v_bob = _v_result.measurements['bob_result'].flatten()
+  assert all(m == 1 for m in _v_bob), "Bobは常に|1⟩を受け取るべきです（Aliceが|1⟩を送信したため）"
   print("PASSED")
 hints:
   - "Step 2: cirq.H(alice_bell) → cirq.CNOT(alice_bell, bob_bell) でベル対を生成します"

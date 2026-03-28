@@ -42,21 +42,15 @@ solution_code: |
   print(f"1: {ones} times")
   print(f"ratio: {zeros/len(measurements):.2f}")
 validation_code: |
-  import cirq
-
-  q = cirq.LineQubit(0)
-  circuit = cirq.Circuit([
-      cirq.H(q),
-      cirq.measure(q, key='result'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=1000)
-  measurements = result.measurements['result'].flatten()
-  zeros = sum(1 for m in measurements if m == 0)
-  ones = sum(1 for m in measurements if m == 1)
-  ratio = zeros / len(measurements)
-  assert 0.35 < ratio < 0.65, f"0と1がほぼ均等に出現すべきです (0の割合: {ratio:.2f})"
-  assert zeros + ones == 1000, f"合計は1000であるべきです (実際: {zeros + ones})"
+  # Validation: re-run the user's circuit to verify statistically
+  _v_sim = cirq.Simulator()
+  _v_result = _v_sim.run(circuit, repetitions=1000)
+  _v_measurements = _v_result.measurements['result'].flatten()
+  _v_zeros = sum(1 for m in _v_measurements if m == 0)
+  _v_ones = sum(1 for m in _v_measurements if m == 1)
+  _v_ratio = _v_zeros / len(_v_measurements)
+  assert 0.35 < _v_ratio < 0.65, f"0と1がほぼ均等に出現すべきです (0の割合: {_v_ratio:.2f})"
+  assert _v_zeros + _v_ones == 1000, f"合計は1000であるべきです (実際: {_v_zeros + _v_ones})"
   print("PASSED")
 hints:
   - "まずcirq.H(q)で重ね合わせ状態を作りましょう"

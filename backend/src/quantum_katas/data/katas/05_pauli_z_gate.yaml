@@ -37,19 +37,11 @@ solution_code: |
   result = sim.run(circuit, repetitions=10)
   print(result)
 validation_code: |
-  import cirq
-
-  q = cirq.LineQubit(0)
-  circuit = cirq.Circuit([
-      cirq.H(q),
-      cirq.Z(q),
-      cirq.H(q),
-      cirq.measure(q, key='result'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=100)
-  measurements = result.measurements['result']
-  assert all(m == 1 for m in measurements.flatten()), "HZH|0⟩ = X|0⟩ = |1⟩ なので常に1を返すべきです"
+  # Validation: re-run the user's circuit to verify
+  _v_sim = cirq.Simulator()
+  _v_result = _v_sim.run(circuit, repetitions=100)
+  _v_measurements = _v_result.measurements['result']
+  assert all(m == 1 for m in _v_measurements.flatten()), "HZH|0⟩ = X|0⟩ = |1⟩ なので常に1を返すべきです"
   print("PASSED")
 hints:
   - "パウリZゲートは cirq.Z(qubit) で適用できます"

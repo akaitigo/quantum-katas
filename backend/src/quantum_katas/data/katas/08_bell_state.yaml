@@ -35,30 +35,23 @@ solution_code: |
   result = sim.run(circuit, repetitions=100)
   print(result)
 validation_code: |
-  import cirq
-
-  q0, q1 = cirq.LineQubit.range(2)
-  circuit = cirq.Circuit([
-      cirq.H(q0),
-      cirq.CNOT(q0, q1),
-      cirq.measure(q0, q1, key='result'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=1000)
-  measurements = result.measurements['result']
-  count_00 = 0
-  count_11 = 0
-  count_other = 0
-  for row in measurements:
-      if row[0] == 0 and row[1] == 0:
-          count_00 += 1
-      elif row[0] == 1 and row[1] == 1:
-          count_11 += 1
+  # Validation: re-run the user's circuit to verify
+  _v_sim = cirq.Simulator()
+  _v_result = _v_sim.run(circuit, repetitions=1000)
+  _v_measurements = _v_result.measurements['result']
+  _v_00 = 0
+  _v_11 = 0
+  _v_other = 0
+  for _v_row in _v_measurements:
+      if _v_row[0] == 0 and _v_row[1] == 0:
+          _v_00 += 1
+      elif _v_row[0] == 1 and _v_row[1] == 1:
+          _v_11 += 1
       else:
-          count_other += 1
-  assert count_other == 0, f"|01⟩ や |10⟩ は出現しないはずです (出現回数: {count_other})"
-  ratio = count_00 / (count_00 + count_11)
-  assert 0.35 < ratio < 0.65, f"|00⟩ と |11⟩ がほぼ均等に出現すべきです (|00⟩の割合: {ratio:.2f})"
+          _v_other += 1
+  assert _v_other == 0, f"|01⟩ や |10⟩ は出現しないはずです (出現回数: {_v_other})"
+  _v_ratio = _v_00 / (_v_00 + _v_11)
+  assert 0.35 < _v_ratio < 0.65, f"|00⟩ と |11⟩ がほぼ均等に出現すべきです (|00⟩の割合: {_v_ratio:.2f})"
   print("PASSED")
 hints:
   - "まず q0 にアダマールゲートを適用して重ね合わせ状態にします"

@@ -6,12 +6,17 @@ with strict security constraints:
 - Timeout: 5 seconds maximum execution time
 - No file system access
 - No network access
+- Memory limit: 512 MB
+- Process limit: 50
+- Metaclass / dunder attribute access blocked
 """
 
 from __future__ import annotations
 
 import ast
 import logging
+import os
+import platform
 import subprocess
 import sys
 import textwrap
@@ -20,7 +25,9 @@ from quantum_katas.models.execution import ExecutionResult
 
 logger = logging.getLogger(__name__)
 
-EXECUTION_TIMEOUT_SECONDS = 5
+EXECUTION_TIMEOUT_SECONDS = 10
+MEMORY_LIMIT_BYTES = 512 * 1024 * 1024  # 512 MB
+NPROC_LIMIT = 50
 
 ALLOWED_MODULES: frozenset[str] = frozenset(
     {
@@ -51,6 +58,16 @@ _BLOCKED_BUILTINS: frozenset[str] = frozenset(
     }
 )
 
+_BLOCKED_DUNDER_ATTRS: frozenset[str] = frozenset(
+    {
+        "__class__",
+        "__bases__",
+        "__subclasses__",
+        "__mro__",
+        "__qualname__",
+    }
+)
+
 _BLOCKED_SET_LITERAL = repr(set(_BLOCKED_BUILTINS))
 
 
@@ -78,18 +95,36 @@ def validate_imports(code: str) -> str | None:
     return None
 
 
-def _build_wrapper_code(user_code: str) -> str:
-    """Build a wrapper script that restricts builtins before executing user code.
+def _validate_blocked_attrs(code: str) -> str | None:
+    """Block access to dangerous dunder attributes (metaclass attacks).
+
+    Returns an error message if a blocked attribute is found, or None if valid.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None  # Syntax errors are caught by validate_imports
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in _BLOCKED_DUNDER_ATTRS:
+            return f"Access to '{node.attr}' is not allowed"
+
+    return None
+
+
+def _build_wrapper_code() -> str:
+    """Build a wrapper script that reads user code from stdin and executes it safely.
 
     Constructs a safe builtins dict by filtering out blocked names,
     then injects a whitelist-guarded ``__import__`` so that only
     allowed modules (cirq, numpy, math) can be imported at runtime.
+    User code is read from stdin to avoid string escaping vulnerabilities.
     """
-    escaped_code = user_code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
     allowed_repr = repr(set(ALLOWED_MODULES))
 
     return textwrap.dedent(f"""\
         import builtins as _builtins
+        import sys as _sys
 
         _blocked = {_BLOCKED_SET_LITERAL}
         _safe_builtins = {{k: v for k, v in vars(_builtins).items() if k not in _blocked}}
@@ -105,9 +140,28 @@ def _build_wrapper_code(user_code: str) -> str:
 
         _safe_builtins["__import__"] = _safe_import
 
-        _code = '{escaped_code}'
+        _code = _sys.stdin.read()
         exec(compile(_code, "<user_code>", "exec"), {{"__builtins__": _safe_builtins}})
     """)
+
+
+def _build_preexec_fn() -> object | None:
+    """Build a preexec_fn that sets resource limits (Linux only).
+
+    Sets memory (RLIMIT_AS) limit to mitigate resource exhaustion attacks.
+    Process/thread limits are handled via environment variables
+    (OPENBLAS_NUM_THREADS, MKL_NUM_THREADS) to avoid breaking numpy/cirq.
+    """
+    if platform.system() != "Linux":
+        return None
+
+    def _set_limits() -> None:
+        import resource  # noqa: PLC0415
+
+        resource.setrlimit(resource.RLIMIT_AS, (MEMORY_LIMIT_BYTES, MEMORY_LIMIT_BYTES))
+        resource.setrlimit(resource.RLIMIT_NPROC, (NPROC_LIMIT, NPROC_LIMIT))
+
+    return _set_limits
 
 
 def execute_code(code: str) -> ExecutionResult:
@@ -115,9 +169,12 @@ def execute_code(code: str) -> ExecutionResult:
 
     Security measures:
     1. AST-level import validation (whitelist)
-    2. Blocked dangerous builtins (open, exec, eval, etc.)
-    3. Subprocess isolation with timeout
-    4. No shell=True to prevent shell injection
+    2. AST-level blocked dunder attribute validation
+    3. Blocked dangerous builtins (open, exec, eval, etc.)
+    4. Subprocess isolation with timeout
+    5. No shell=True to prevent shell injection
+    6. Code passed via stdin (no string escaping issues)
+    7. Memory and process limits (Linux)
     """
     import_error = validate_imports(code)
     if import_error is not None:
@@ -126,15 +183,28 @@ def execute_code(code: str) -> ExecutionResult:
             error=import_error,
         )
 
-    wrapper_code = _build_wrapper_code(code)
+    attr_error = _validate_blocked_attrs(code)
+    if attr_error is not None:
+        return ExecutionResult(
+            success=False,
+            error=attr_error,
+        )
+
+    wrapper_code = _build_wrapper_code()
+
+    # Restrict OpenBLAS/MKL thread spawning to prevent resource exhaustion
+    env = {**os.environ, "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
 
     try:
         result = subprocess.run(  # noqa: S603 — input is validated above
             [sys.executable, "-c", wrapper_code],
+            input=code,
             capture_output=True,
             text=True,
             timeout=EXECUTION_TIMEOUT_SECONDS,
             check=False,
+            preexec_fn=_build_preexec_fn(),
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return ExecutionResult(

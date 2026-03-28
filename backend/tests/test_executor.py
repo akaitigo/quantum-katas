@@ -4,6 +4,7 @@ import pytest
 
 from quantum_katas.services.executor import (
     ALLOWED_MODULES,
+    _validate_blocked_attrs,
     execute_code,
     validate_imports,
 )
@@ -60,6 +61,33 @@ class TestValidateImports:
 
     def test_allowed_modules_frozen(self):
         assert isinstance(ALLOWED_MODULES, frozenset)
+
+
+class TestValidateBlockedAttrs:
+    """Tests for blocked dunder attribute validation."""
+
+    def test_class_attr_blocked(self):
+        result = _validate_blocked_attrs("x = ''.__class__")
+        assert result is not None
+        assert "__class__" in result
+
+    def test_bases_attr_blocked(self):
+        result = _validate_blocked_attrs("x = str.__bases__")
+        assert result is not None
+        assert "__bases__" in result
+
+    def test_subclasses_attr_blocked(self):
+        result = _validate_blocked_attrs("x = object.__subclasses__()")
+        assert result is not None
+        assert "__subclasses__" in result
+
+    def test_normal_attr_allowed(self):
+        result = _validate_blocked_attrs("x = [1, 2, 3]\nprint(len(x))")
+        assert result is None
+
+    def test_syntax_error_returns_none(self):
+        result = _validate_blocked_attrs("def (invalid")
+        assert result is None
 
 
 class TestExecuteCode:
@@ -136,6 +164,20 @@ print(result)
         result = execute_code(code)
         assert result.success is False
 
+    def test_metaclass_class_blocked(self):
+        result = execute_code("x = ''.__class__")
+        assert result.success is False
+        assert result.error is not None
+        assert "__class__" in result.error
+
+    def test_metaclass_bases_blocked(self):
+        result = execute_code("x = str.__bases__")
+        assert result.success is False
+
+    def test_metaclass_subclasses_blocked(self):
+        result = execute_code("x = object.__subclasses__()")
+        assert result.success is False
+
     def test_multiline_output(self):
         result = execute_code("print('line1')\nprint('line2')")
         assert result.success is True
@@ -172,3 +214,17 @@ class TestExecuteEndpoint:
     def test_execute_missing_code(self, client):
         response = client.post("/api/execute", json={})
         assert response.status_code == 422
+
+    def test_execute_rate_limited(self, client):
+        """Verify rate limiting returns 429 when limit is exceeded."""
+        from quantum_katas.services.rate_limiter import rate_limiter  # noqa: PLC0415
+
+        # Exhaust rate limit
+        for _ in range(31):
+            rate_limiter.is_allowed("testclient")
+
+        response = client.post("/api/execute", json={"code": "print('test')"})
+        assert response.status_code == 429
+
+        # Reset for other tests by waiting (or just clearing internal state)
+        rate_limiter._requests.clear()  # noqa: SLF001

@@ -6,6 +6,7 @@ lookup methods for the kata catalog.
 
 from __future__ import annotations
 
+import functools
 import logging
 from pathlib import Path
 
@@ -17,13 +18,13 @@ logger = logging.getLogger(__name__)
 
 _KATAS_DIR = Path(__file__).resolve().parent.parent / "data" / "katas"
 
-_kata_cache: dict[str, Kata] | None = None
 
-
+@functools.lru_cache(maxsize=1)
 def _load_katas() -> dict[str, Kata]:
     """Load all kata YAML files from the data directory.
 
     Returns a dict keyed by kata id, sorted by difficulty.
+    Uses lru_cache for thread-safe singleton caching.
     """
     katas: dict[str, Kata] = {}
     yaml_files = sorted(_KATAS_DIR.glob("*.yaml"))
@@ -53,17 +54,9 @@ def _load_katas() -> dict[str, Kata]:
     return katas
 
 
-def _get_cache() -> dict[str, Kata]:
-    """Get or initialize the kata cache."""
-    global _kata_cache  # noqa: PLW0603
-    if _kata_cache is None:
-        _kata_cache = _load_katas()
-    return _kata_cache
-
-
 def get_all_katas() -> list[KataSummary]:
     """Return a list of all katas as summaries, ordered by difficulty."""
-    cache = _get_cache()
+    cache = _load_katas()
     return [
         KataSummary(
             id=kata.id,
@@ -77,8 +70,8 @@ def get_all_katas() -> list[KataSummary]:
 
 
 def get_kata_by_id(kata_id: str) -> KataDetail | None:
-    """Return a single kata detail by ID (excludes solution_code)."""
-    cache = _get_cache()
+    """Return a single kata detail by ID (excludes solution_code and validation_code)."""
+    cache = _load_katas()
     kata = cache.get(kata_id)
     if kata is None:
         return None
@@ -89,7 +82,6 @@ def get_kata_by_id(kata_id: str) -> KataDetail | None:
         difficulty=kata.difficulty,
         category=kata.category,
         template_code=kata.template_code,
-        validation_code=kata.validation_code,
         hints=list(kata.hints),
         prerequisites=list(kata.prerequisites),
         explanation=kata.explanation,
@@ -98,11 +90,10 @@ def get_kata_by_id(kata_id: str) -> KataDetail | None:
 
 def get_kata_raw(kata_id: str) -> Kata | None:
     """Return the full kata (including solution_code) for internal use."""
-    cache = _get_cache()
+    cache = _load_katas()
     return cache.get(kata_id)
 
 
 def reset_cache() -> None:
     """Clear the kata cache (useful for testing)."""
-    global _kata_cache  # noqa: PLW0603
-    _kata_cache = None
+    _load_katas.cache_clear()

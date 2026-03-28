@@ -67,10 +67,11 @@ class TestGetKata:
         assert "description" in data
         assert "explanation" in data
 
-    def test_detail_excludes_solution_code(self, client: TestClient):
+    def test_detail_excludes_solution_and_validation_code(self, client: TestClient):
         response = client.get("/api/katas/01-single-qubit")
         data = response.json()
         assert "solution_code" not in data
+        assert "validation_code" not in data
 
     def test_returns_404_for_invalid_id(self, client: TestClient):
         response = client.get("/api/katas/nonexistent-kata")

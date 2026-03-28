@@ -7,7 +7,7 @@ export interface KataSummary {
   readonly prerequisites: readonly string[];
 }
 
-/** Kata detail returned by GET /api/katas/:id (excludes solution_code). */
+/** Kata detail returned by GET /api/katas/:id (excludes solution_code and validation_code). */
 export interface KataDetail {
   readonly id: string;
   readonly title: string;
@@ -15,7 +15,6 @@ export interface KataDetail {
   readonly difficulty: number;
   readonly category: string;
   readonly template_code: string;
-  readonly validation_code: string;
   readonly hints: readonly string[];
   readonly prerequisites: readonly string[];
   readonly explanation: string;

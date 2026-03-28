@@ -38,21 +38,13 @@ solution_code: |
   result = sim.run(circuit, repetitions=10)
   print(result)
 validation_code: |
-  import cirq
-
-  q0, q1 = cirq.LineQubit.range(2)
-  circuit = cirq.Circuit([
-      cirq.X(q0),
-      cirq.CNOT(q0, q1),
-      cirq.measure(q0, key='control'),
-      cirq.measure(q1, key='target'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=100)
-  control = result.measurements['control'].flatten()
-  target = result.measurements['target'].flatten()
-  assert all(c == 1 for c in control), "制御ビットはXゲート適用後なので常に1のはずです"
-  assert all(t == 1 for t in target), "制御ビットが1のとき、CNOTによりターゲットが反転して1になるはずです"
+  # Validation: re-run the user's circuit to verify
+  _v_sim = cirq.Simulator()
+  _v_result = _v_sim.run(circuit, repetitions=100)
+  _v_control = _v_result.measurements['control'].flatten()
+  _v_target = _v_result.measurements['target'].flatten()
+  assert all(c == 1 for c in _v_control), "制御ビットはXゲート適用後なので常に1のはずです"
+  assert all(t == 1 for t in _v_target), "制御ビットが1のとき、CNOTによりターゲットが反転して1になるはずです"
   print("PASSED")
 hints:
   - "CNOTゲートは cirq.CNOT(control, target) で適用できます"
