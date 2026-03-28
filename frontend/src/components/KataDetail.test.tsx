@@ -3,8 +3,30 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KataDetail } from "./KataDetail";
+
+// Mock Monaco Editor to avoid loading in test environment
+vi.mock("@monaco-editor/react", () => {
+  return {
+    default: function MockEditor({
+      value,
+      onChange,
+    }: {
+      readonly value: string;
+      readonly onChange?: (value: string | undefined) => void;
+    }) {
+      return (
+        <textarea
+          data-testid="monaco-editor-mock"
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+          aria-label="コードエディタ"
+        />
+      );
+    },
+  };
+});
 
 function renderWithRoute(kataId: string) {
   const queryClient = new QueryClient({
@@ -51,15 +73,17 @@ describe("KataDetail", () => {
     });
   });
 
-  it("renders the code textarea with template code", async () => {
+  it("renders the code editor with template code", async () => {
     renderWithRoute("01-single-qubit");
 
     await waitFor(() => {
-      const textarea =
-        screen.getByLabelText<HTMLTextAreaElement>("コードエディタ");
-      expect(textarea).toBeInTheDocument();
-      expect(textarea.value).toContain("import cirq");
+      const editor = screen.getByTestId("code-editor");
+      expect(editor).toBeInTheDocument();
     });
+
+    const textarea =
+      screen.getByLabelText<HTMLTextAreaElement>("コードエディタ");
+    expect(textarea.value).toContain("import cirq");
   });
 
   it("renders the execute button", async () => {
@@ -67,6 +91,14 @@ describe("KataDetail", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "実行" })).toBeInTheDocument();
+    });
+  });
+
+  it("renders the submit button", async () => {
+    renderWithRoute("01-single-qubit");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "提出" })).toBeInTheDocument();
     });
   });
 
@@ -122,6 +154,25 @@ describe("KataDetail", () => {
       expect(
         screen.getByText("バックエンド未接続 — モックデータで表示しています"),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("renders result placeholder when no results", async () => {
+    renderWithRoute("01-single-qubit");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("コードを実行すると、ここに結果が表示されます"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("renders the split layout with editor and result panels", async () => {
+    renderWithRoute("01-single-qubit");
+
+    await waitFor(() => {
+      expect(screen.getByText("Code Editor")).toBeInTheDocument();
+      expect(screen.getByText("実行結果")).toBeInTheDocument();
     });
   });
 });

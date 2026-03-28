@@ -1,3 +1,4 @@
+import type { ExecutionResult } from "@/types/execution";
 import type { KataDetail, KataSummary, ValidateResponse } from "@/types/kata";
 
 export const MOCK_KATA_SUMMARIES: readonly KataSummary[] = [
@@ -178,5 +179,16 @@ export function getMockValidateResponse(
       "モックモード: バックエンドに接続されていないため、コード検証は利用できません。",
     stdout: "",
     stderr: "",
+  };
+}
+
+export function getMockExecuteResponse(_code: string): ExecutionResult {
+  return {
+    stdout:
+      "モックモード: バックエンドに接続されていないため、コード実行は利用できません。",
+    stderr: "",
+    success: false,
+    error:
+      "モックモード: バックエンドに接続されていないため、コード実行は利用できません。",
   };
 }

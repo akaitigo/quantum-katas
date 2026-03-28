@@ -1,7 +1,9 @@
+import type { ExecutionResult } from "@/types/execution";
 import type { KataDetail, KataSummary, ValidateResponse } from "@/types/kata";
 import { API_BASE_URL } from "./constants";
 import {
   MOCK_KATA_SUMMARIES,
+  getMockExecuteResponse,
   getMockKataDetail,
   getMockValidateResponse,
 } from "./mock-data";
@@ -87,6 +89,18 @@ export async function validateKata(
     return getMockValidateResponse(kataId, code);
   }
   return fetchJson<ValidateResponse>(`/katas/${kataId}/validate`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+/** Execute Python code via the backend. */
+export async function executeCode(code: string): Promise<ExecutionResult> {
+  await ensureBackendDetected();
+  if (useMock) {
+    return getMockExecuteResponse(code);
+  }
+  return fetchJson<ExecutionResult>("/execute", {
     method: "POST",
     body: JSON.stringify({ code }),
   });

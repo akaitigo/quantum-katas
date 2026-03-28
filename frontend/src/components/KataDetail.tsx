@@ -1,5 +1,7 @@
-import { useKataList } from "@/hooks/useKatas";
-import { useKataDetail } from "@/hooks/useKatas";
+import { CodeEditor } from "@/components/CodeEditor";
+import { ExecutionResult } from "@/components/ExecutionResult";
+import { useExecution } from "@/hooks/useExecution";
+import { useKataDetail, useKataList } from "@/hooks/useKatas";
 import { useProgress } from "@/hooks/useProgress";
 import { isMockMode, validateKata } from "@/lib/api";
 import { CATEGORY_LABELS } from "@/lib/constants";
@@ -39,53 +41,6 @@ function HintPanel({
   );
 }
 
-function ResultDisplay({
-  result,
-}: { readonly result: ValidateResponse }): React.JSX.Element {
-  const passed = result.passed;
-
-  return (
-    <div
-      className={`result-panel ${passed ? "result-passed" : "result-failed"}`}
-    >
-      <div
-        className={`result-title ${passed ? "result-title-passed" : "result-title-failed"}`}
-      >
-        {passed ? "正解!" : "不正解"}
-      </div>
-      <div className="result-message">{result.message}</div>
-      {result.stdout && (
-        <div>
-          <div
-            style={{
-              fontSize: "0.75rem",
-              color: "var(--color-text-muted)",
-              marginBottom: "0.25rem",
-            }}
-          >
-            stdout:
-          </div>
-          <div className="result-output">{result.stdout}</div>
-        </div>
-      )}
-      {result.stderr && (
-        <div style={{ marginTop: "0.5rem" }}>
-          <div
-            style={{
-              fontSize: "0.75rem",
-              color: "var(--color-text-muted)",
-              marginBottom: "0.25rem",
-            }}
-          >
-            stderr:
-          </div>
-          <div className="result-output">{result.stderr}</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function KataDetail(): React.JSX.Element {
   const { kataId } = useParams<{ kataId: string }>();
   const resolvedId = kataId ?? "";
@@ -93,6 +48,7 @@ export function KataDetail(): React.JSX.Element {
   const { kata, isLoading, error } = useKataDetail(resolvedId);
   const { katas } = useKataList();
   const { isCompleted, markCompleted } = useProgress();
+  const { executionResult, isExecuting, execute, clearResult } = useExecution();
 
   const [code, setCode] = useState<string | null>(null);
   const [validationResult, setValidationResult] =
@@ -113,9 +69,17 @@ export function KataDetail(): React.JSX.Element {
     };
   }, [katas, resolvedId]);
 
+  const handleExecute = useCallback(() => {
+    if (!kata) return;
+    const currentCode = code ?? kata.template_code;
+    setValidationResult(null);
+    void execute(currentCode);
+  }, [kata, code, execute]);
+
   const handleValidate = useCallback(async () => {
     if (!kata || code === null) return;
     setIsValidating(true);
+    clearResult();
     try {
       const result = await validateKata(kata.id, code);
       setValidationResult(result);
@@ -133,7 +97,14 @@ export function KataDetail(): React.JSX.Element {
     } finally {
       setIsValidating(false);
     }
-  }, [kata, code, markCompleted]);
+  }, [kata, code, markCompleted, clearResult]);
+
+  const handleReset = useCallback(() => {
+    if (!kata) return;
+    setCode(kata.template_code);
+    setValidationResult(null);
+    clearResult();
+  }, [kata, clearResult]);
 
   if (isLoading) {
     return (
@@ -211,42 +182,72 @@ export function KataDetail(): React.JSX.Element {
         </div>
       )}
 
-      <div className="editor-section">
-        <h2 className="editor-section-title">Code Editor</h2>
-        <textarea
-          className="code-textarea"
-          value={displayedCode}
-          onChange={(e) => setCode(e.target.value)}
-          spellCheck={false}
-          aria-label="コードエディタ"
-        />
-      </div>
+      <div className="kata-split-layout">
+        <div className="kata-editor-panel">
+          <div className="editor-section">
+            <h2 className="editor-section-title">Code Editor</h2>
+            <CodeEditor
+              value={displayedCode}
+              onChange={(val) => setCode(val)}
+              onExecute={handleExecute}
+            />
+          </div>
 
-      <div className="btn-group">
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => void handleValidate()}
-          disabled={isValidating}
-        >
-          {isValidating ? "検証中..." : "実行"}
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => setCode(kata.template_code)}
-        >
-          リセット
-        </button>
-      </div>
-
-      {validationResult && (
-        <div style={{ marginTop: "1rem" }}>
-          <ResultDisplay result={validationResult} />
+          <div className="btn-group">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleExecute}
+              disabled={isExecuting || isValidating}
+            >
+              {isExecuting ? "実行中..." : "実行"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-submit"
+              onClick={() => void handleValidate()}
+              disabled={isValidating || isExecuting}
+            >
+              {isValidating ? "検証中..." : "提出"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleReset}
+            >
+              リセット
+            </button>
+          </div>
         </div>
-      )}
+
+        <div className="kata-result-panel">
+          <h2 className="editor-section-title">実行結果</h2>
+          <ExecutionResult
+            executionResult={executionResult}
+            validationResult={validationResult}
+            isExecuting={isExecuting}
+            isValidating={isValidating}
+          />
+          {!executionResult &&
+            !validationResult &&
+            !isExecuting &&
+            !isValidating && (
+              <div className="result-placeholder">
+                コードを実行すると、ここに結果が表示されます
+              </div>
+            )}
+        </div>
+      </div>
 
       <HintPanel hints={kata.hints} />
+
+      {validationResult?.passed && nextKata && (
+        <div className="next-kata-prompt">
+          <Link to={`/kata/${nextKata.id}`} className="btn btn-primary">
+            次のカタへ: {nextKata.title} &rarr;
+          </Link>
+        </div>
+      )}
 
       <nav className="kata-nav" aria-label="カタ間ナビゲーション">
         <div>
