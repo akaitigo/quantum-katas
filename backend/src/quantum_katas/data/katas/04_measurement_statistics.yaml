@@ -1,0 +1,82 @@
+id: "04-measurement-statistics"
+title: "測定と確率"
+description: |
+  重ね合わせ状態の測定結果の統計を確認します。
+  量子力学の確率的性質を実際に体験しましょう。
+difficulty: 4
+category: "basics"
+template_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+
+  # アダマールゲートで重ね合わせ状態を作り、1000回測定してください
+  circuit = cirq.Circuit([
+      # YOUR CODE HERE
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  # 1000回の繰り返し測定を実行してください
+  # YOUR CODE HERE
+
+  # 0と1の出現回数を集計して表示してください
+  # YOUR CODE HERE
+solution_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+
+  circuit = cirq.Circuit([
+      cirq.H(q),
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=1000)
+
+  measurements = result.measurements['result'].flatten()
+  zeros = sum(1 for m in measurements if m == 0)
+  ones = sum(1 for m in measurements if m == 1)
+  print(f"0: {zeros} times")
+  print(f"1: {ones} times")
+  print(f"ratio: {zeros/len(measurements):.2f}")
+validation_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+  circuit = cirq.Circuit([
+      cirq.H(q),
+      cirq.measure(q, key='result'),
+  ])
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=1000)
+  measurements = result.measurements['result'].flatten()
+  zeros = sum(1 for m in measurements if m == 0)
+  ones = sum(1 for m in measurements if m == 1)
+  ratio = zeros / len(measurements)
+  assert 0.35 < ratio < 0.65, f"0と1がほぼ均等に出現すべきです (0の割合: {ratio:.2f})"
+  assert zeros + ones == 1000, f"合計は1000であるべきです (実際: {zeros + ones})"
+  print("PASSED")
+hints:
+  - "まずcirq.H(q)で重ね合わせ状態を作りましょう"
+  - "sim.run(circuit, repetitions=1000) で1000回の測定を行います"
+  - "result.measurements['result'].flatten() で測定結果の配列を取得し、sum() で集計します"
+prerequisites:
+  - "03-hadamard-gate"
+explanation: |
+  ## 量子測定の確率
+
+  量子ビットの重ね合わせ状態 (|0⟩ + |1⟩)/√2 を測定すると:
+  - 50% の確率で |0⟩ (測定結果 0)
+  - 50% の確率で |1⟩ (測定結果 1)
+
+  これは **確率的** であり、個々の測定結果は予測不可能です。
+  しかし、多数回測定すれば統計的に50:50に近づきます。
+
+  ### ボルン則
+  状態 |ψ⟩ = α|0⟩ + β|1⟩ を測定したとき:
+  - P(0) = |α|² = 0.5
+  - P(1) = |β|² = 0.5
+
+  これが量子力学の基本法則「ボルン則」です。

@@ -1,0 +1,112 @@
+id: "09-quantum-teleportation"
+title: "量子テレポーテーション"
+description: |
+  ベル状態を使って量子情報を転送する「量子テレポーテーション」プロトコルを実装します。
+  Aliceが持つ量子状態をBobに転送しましょう。
+difficulty: 9
+category: "algorithms"
+template_code: |
+  import cirq
+
+  alice_msg, alice_bell, bob_bell = cirq.LineQubit.range(3)
+
+  # 量子テレポーテーション回路を構築してください
+  circuit = cirq.Circuit()
+
+  # Step 1: 転送したい状態を準備 (ここでは X|0⟩ = |1⟩ を転送)
+  circuit.append(cirq.X(alice_msg))
+
+  # Step 2: AliceとBobでベル対を共有
+  # YOUR CODE HERE
+
+  # Step 3: Aliceがベル測定を実行
+  # YOUR CODE HERE
+
+  # Step 4: 古典通信に基づくBobの補正操作
+  # YOUR CODE HERE
+
+  # Bob側の測定
+  circuit.append(cirq.measure(bob_bell, key='bob_result'))
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+solution_code: |
+  import cirq
+
+  alice_msg, alice_bell, bob_bell = cirq.LineQubit.range(3)
+
+  circuit = cirq.Circuit()
+
+  # Step 1: 転送したい状態を準備 (|1⟩ を転送)
+  circuit.append(cirq.X(alice_msg))
+
+  # Step 2: AliceとBobでベル対を共有
+  circuit.append(cirq.H(alice_bell))
+  circuit.append(cirq.CNOT(alice_bell, bob_bell))
+
+  # Step 3: Aliceがベル測定を実行
+  circuit.append(cirq.CNOT(alice_msg, alice_bell))
+  circuit.append(cirq.H(alice_msg))
+  circuit.append(cirq.measure(alice_msg, key='alice_msg'))
+  circuit.append(cirq.measure(alice_bell, key='alice_bell'))
+
+  # Step 4: 古典通信に基づくBobの補正操作
+  circuit.append(cirq.CNOT(alice_bell, bob_bell))
+  circuit.append(cirq.CZ(alice_msg, bob_bell))
+
+  # Bob側の測定
+  circuit.append(cirq.measure(bob_bell, key='bob_result'))
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+validation_code: |
+  import cirq
+
+  alice_msg, alice_bell, bob_bell = cirq.LineQubit.range(3)
+  circuit = cirq.Circuit()
+  circuit.append(cirq.X(alice_msg))
+  circuit.append(cirq.H(alice_bell))
+  circuit.append(cirq.CNOT(alice_bell, bob_bell))
+  circuit.append(cirq.CNOT(alice_msg, alice_bell))
+  circuit.append(cirq.H(alice_msg))
+  circuit.append(cirq.measure(alice_msg, key='alice_msg'))
+  circuit.append(cirq.measure(alice_bell, key='alice_bell'))
+  circuit.append(cirq.CNOT(alice_bell, bob_bell))
+  circuit.append(cirq.CZ(alice_msg, bob_bell))
+  circuit.append(cirq.measure(bob_bell, key='bob_result'))
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  bob_measurements = result.measurements['bob_result'].flatten()
+  assert all(m == 1 for m in bob_measurements), "Bobは常に|1⟩を受け取るべきです（Aliceが|1⟩を送信したため）"
+  print("PASSED")
+hints:
+  - "Step 2: cirq.H(alice_bell) → cirq.CNOT(alice_bell, bob_bell) でベル対を生成します"
+  - "Step 3: cirq.CNOT(alice_msg, alice_bell) → cirq.H(alice_msg) → 両方を測定"
+  - "Step 4: cirq.CNOT(alice_bell, bob_bell) → cirq.CZ(alice_msg, bob_bell) で補正します"
+prerequisites:
+  - "08-bell-state"
+explanation: |
+  ## 量子テレポーテーション
+
+  量子テレポーテーションは、量子もつれと古典通信を使って
+  量子状態を遠隔地に転送するプロトコルです。
+
+  ### プロトコル
+  1. **ベル対の共有**: Alice と Bob がベル状態 |Φ+⟩ を共有
+  2. **ベル測定**: Alice が転送したい量子ビットとベル対の自分側を測定
+  3. **古典通信**: Alice が測定結果 (2ビット) を Bob に送信
+  4. **補正操作**: Bob が測定結果に基づいてゲートを適用
+
+  ### 回路
+  ```
+  msg:   ───X───────────@───H───M───────────@───
+                         |                   |
+  a_bell:────────H───@───X───────M───@───────|───
+                     |               |       |
+  b_bell:────────────X───────────────X───@───M───
+  ```
+
+  量子状態そのものが「光速を超えて転送」されるわけではなく、
+  古典通信 (測定結果の伝達) が必要なため、超光速通信にはなりません。

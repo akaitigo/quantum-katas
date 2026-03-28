@@ -1,0 +1,82 @@
+id: "05-pauli-z-gate"
+title: "パウリZゲート"
+description: |
+  パウリZゲートによる位相反転を学びます。
+  Zゲートは |1⟩ の位相を反転させますが、測定基底では直接観測できません。
+  HZHがXと等価であることを確認しましょう。
+difficulty: 5
+category: "basics"
+template_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+
+  # HZH = X であることを確認する回路を作成してください
+  # |0⟩ に H → Z → H を適用すると |1⟩ になります
+  circuit = cirq.Circuit([
+      # YOUR CODE HERE
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+solution_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+
+  circuit = cirq.Circuit([
+      cirq.H(q),
+      cirq.Z(q),
+      cirq.H(q),
+      cirq.measure(q, key='result'),
+  ])
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+validation_code: |
+  import cirq
+
+  q = cirq.LineQubit(0)
+  circuit = cirq.Circuit([
+      cirq.H(q),
+      cirq.Z(q),
+      cirq.H(q),
+      cirq.measure(q, key='result'),
+  ])
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  measurements = result.measurements['result']
+  assert all(m == 1 for m in measurements.flatten()), "HZH|0⟩ = X|0⟩ = |1⟩ なので常に1を返すべきです"
+  print("PASSED")
+hints:
+  - "パウリZゲートは cirq.Z(qubit) で適用できます"
+  - "Zゲートは Z|0⟩ = |0⟩、Z|1⟩ = -|1⟩ です。位相の変化は計算基底での測定では直接見えません"
+  - "H → Z → H の順に適用してください。HZH = X なので、結果は全て1になります"
+prerequisites:
+  - "03-hadamard-gate"
+explanation: |
+  ## パウリZゲート (位相反転)
+
+  パウリZゲートは |1⟩ の位相を反転させます:
+  - |0⟩ → |0⟩
+  - |1⟩ → -|1⟩
+
+  ### 行列表現
+  ```
+  Z = | 1   0 |
+      | 0  -1 |
+  ```
+
+  ### HZH = X の証明
+  ```
+  HZH|0⟩ = HZ(|0⟩+|1⟩)/√2
+         = H(|0⟩-|1⟩)/√2
+         = H|1⟩... の X 基底表現
+         = |1⟩
+  ```
+
+  Zゲートの効果は計算基底 {|0⟩, |1⟩} での測定では直接見えませんが、
+  アダマール基底で挟むことで効果を観測できます。

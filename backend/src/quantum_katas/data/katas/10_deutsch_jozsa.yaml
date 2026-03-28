@@ -1,0 +1,112 @@
+id: "10-deutsch-jozsa"
+title: "ドイチュ-ジョサアルゴリズム"
+description: |
+  量子並列性を活用したドイチュ-ジョサ (Deutsch-Jozsa) アルゴリズムを実装します。
+  関数が「定数」か「バランス」かを1回のクエリで判定します。
+difficulty: 10
+category: "algorithms"
+template_code: |
+  import cirq
+
+  input_qubit = cirq.LineQubit(0)
+  output_qubit = cirq.LineQubit(1)
+
+  # ドイチュ-ジョサアルゴリズムを実装してください
+  # バランス関数 f(x) = x を使用（オラクル: CNOT）
+  circuit = cirq.Circuit()
+
+  # Step 1: 出力量子ビットを |1⟩ にする
+  # YOUR CODE HERE
+
+  # Step 2: 全量子ビットにアダマールゲートを適用
+  # YOUR CODE HERE
+
+  # Step 3: オラクル (f(x) = x → CNOT)
+  # YOUR CODE HERE
+
+  # Step 4: 入力量子ビットにアダマールゲートを適用
+  # YOUR CODE HERE
+
+  # Step 5: 入力量子ビットを測定
+  circuit.append(cirq.measure(input_qubit, key='result'))
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+  # result が 1 → バランス関数、0 → 定数関数
+solution_code: |
+  import cirq
+
+  input_qubit = cirq.LineQubit(0)
+  output_qubit = cirq.LineQubit(1)
+
+  circuit = cirq.Circuit()
+
+  # Step 1: 出力量子ビットを |1⟩ にする
+  circuit.append(cirq.X(output_qubit))
+
+  # Step 2: 全量子ビットにアダマールゲートを適用
+  circuit.append(cirq.H(input_qubit))
+  circuit.append(cirq.H(output_qubit))
+
+  # Step 3: オラクル (f(x) = x → CNOT)
+  circuit.append(cirq.CNOT(input_qubit, output_qubit))
+
+  # Step 4: 入力量子ビットにアダマールゲートを適用
+  circuit.append(cirq.H(input_qubit))
+
+  # Step 5: 入力量子ビットを測定
+  circuit.append(cirq.measure(input_qubit, key='result'))
+
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=10)
+  print(result)
+validation_code: |
+  import cirq
+
+  input_qubit = cirq.LineQubit(0)
+  output_qubit = cirq.LineQubit(1)
+  circuit = cirq.Circuit()
+  circuit.append(cirq.X(output_qubit))
+  circuit.append(cirq.H(input_qubit))
+  circuit.append(cirq.H(output_qubit))
+  circuit.append(cirq.CNOT(input_qubit, output_qubit))
+  circuit.append(cirq.H(input_qubit))
+  circuit.append(cirq.measure(input_qubit, key='result'))
+  sim = cirq.Simulator()
+  result = sim.run(circuit, repetitions=100)
+  measurements = result.measurements['result'].flatten()
+  assert all(m == 1 for m in measurements), "バランス関数のオラクルでは入力量子ビットは常に1を返すべきです"
+  print("PASSED")
+hints:
+  - "Step 1: cirq.X(output_qubit) で出力を |1⟩ にし、Step 2: 両方に cirq.H() を適用します"
+  - "Step 3: cirq.CNOT(input_qubit, output_qubit) がバランス関数 f(x)=x のオラクルです"
+  - "Step 4: cirq.H(input_qubit) を適用して測定します。結果が1ならバランス関数と判定できます"
+prerequisites:
+  - "08-bell-state"
+explanation: |
+  ## ドイチュ-ジョサアルゴリズム
+
+  与えられた関数 f: {0,1} → {0,1} が:
+  - **定数関数**: f(0) = f(1) (常に同じ値を返す)
+  - **バランス関数**: f(0) ≠ f(1) (入力によって異なる値を返す)
+
+  のどちらかを **1回のクエリ** で判定します。
+  古典的には2回のクエリが必要です。
+
+  ### アルゴリズム
+  1. 入力 |0⟩、出力 |1⟩ を準備
+  2. 全量子ビットに H を適用
+  3. オラクル Uf を適用
+  4. 入力に H を適用して測定
+  5. 結果が |0⟩ → 定数、|1⟩ → バランス
+
+  ### 回路
+  ```
+  input:  ───H───@───H───M('result')───
+                  |
+  output: ───X───H───X─────────────────
+  ```
+
+  これは量子コンピュータが古典コンピュータより効率的であることを
+  示す最初のアルゴリズムの一つです。

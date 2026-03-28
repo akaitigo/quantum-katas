@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from quantum_katas.routers import execute
+from quantum_katas.routers import execute, katas
 
 app = FastAPI(
     title="quantum-katas API",
@@ -20,6 +20,7 @@ app.add_middleware(
 )
 
 app.include_router(execute.router, prefix="/api")
+app.include_router(katas.router, prefix="/api")
 
 
 @app.get("/health")
