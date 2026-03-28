@@ -1,42 +1,22 @@
 import { CodeEditor } from "@/components/CodeEditor";
 import { ExecutionResult } from "@/components/ExecutionResult";
+import { HintPanel } from "@/components/HintPanel";
 import { useExecution } from "@/hooks/useExecution";
 import { useKataDetail, useKataList } from "@/hooks/useKatas";
 import { useProgress } from "@/hooks/useProgress";
 import { isMockMode, validateKata } from "@/lib/api";
-import { CATEGORY_LABELS } from "@/lib/constants";
+import { CATEGORY_LABELS, TOTAL_KATAS } from "@/lib/constants";
 import type { ValidateResponse } from "@/types/kata";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-function HintPanel({
-  hints,
-}: { readonly hints: readonly string[] }): React.JSX.Element {
-  const [visibleCount, setVisibleCount] = useState(0);
-
-  const showNextHint = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + 1, hints.length));
-  }, [hints.length]);
-
-  if (hints.length === 0) return <></>;
-
+function CelebrationBanner(): React.JSX.Element {
   return (
-    <div className="hints-section">
-      {hints.slice(0, visibleCount).map((hint, index) => (
-        <div key={`hint-${String(index)}`} className="hint-item">
-          <div className="hint-label">Hint {index + 1}</div>
-          <div>{hint}</div>
-        </div>
-      ))}
-      {visibleCount < hints.length && (
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={showNextHint}
-        >
-          Hint {visibleCount + 1} を表示 ({hints.length - visibleCount} 残り)
-        </button>
-      )}
+    <div className="celebration-banner" data-testid="celebration-banner">
+      <div className="celebration-title">All Clear!</div>
+      <p className="celebration-message">
+        全10カタを制覇しました。量子コンピューティングの基礎をマスターです!
+      </p>
     </div>
   );
 }
@@ -47,7 +27,7 @@ export function KataDetail(): React.JSX.Element {
 
   const { kata, isLoading, error } = useKataDetail(resolvedId);
   const { katas } = useKataList();
-  const { isCompleted, markCompleted } = useProgress();
+  const { isCompleted, markCompleted, completedCount } = useProgress();
   const { executionResult, isExecuting, execute, clearResult } = useExecution();
 
   const [code, setCode] = useState<string | null>(null);
@@ -139,6 +119,7 @@ export function KataDetail(): React.JSX.Element {
 
   // Initialize code from template on first render for this kata
   const displayedCode = code ?? kata.template_code;
+  const isAllClear = completedCount >= TOTAL_KATAS;
 
   return (
     <div className="kata-detail">
@@ -239,7 +220,9 @@ export function KataDetail(): React.JSX.Element {
         </div>
       </div>
 
-      <HintPanel hints={kata.hints} />
+      <HintPanel kataId={kata.id} hints={kata.hints} />
+
+      {validationResult?.passed && isAllClear && <CelebrationBanner />}
 
       {validationResult?.passed && nextKata && (
         <div className="next-kata-prompt">

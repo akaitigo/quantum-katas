@@ -117,11 +117,10 @@ describe("KataDetail", () => {
     renderWithRoute("01-single-qubit");
 
     await waitFor(() => {
-      expect(screen.getByText(/Hint 1 を表示/)).toBeInTheDocument();
+      expect(screen.getByTestId("show-next-hint")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Hint 1 を表示/));
-    expect(screen.getByText("Hint 1")).toBeInTheDocument();
+    await user.click(screen.getByTestId("show-next-hint"));
     expect(
       screen.getByText("cirq.LineQubit(0) で量子ビットを作成できます"),
     ).toBeInTheDocument();
@@ -173,6 +172,15 @@ describe("KataDetail", () => {
     await waitFor(() => {
       expect(screen.getByText("Code Editor")).toBeInTheDocument();
       expect(screen.getByText("実行結果")).toBeInTheDocument();
+    });
+  });
+
+  it("renders hint panel with proper structure", async () => {
+    renderWithRoute("01-single-qubit");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hint-panel")).toBeInTheDocument();
+      expect(screen.getByText("Hints (0/3)")).toBeInTheDocument();
     });
   });
 });
