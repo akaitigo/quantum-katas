@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException
@@ -37,6 +38,10 @@ async def get_kata(kata_id: str) -> dict[str, str | int | list[str]]:
 
 @router.post("/katas/{kata_id}/validate")
 async def validate_kata(kata_id: str, body: ValidateRequestBody) -> dict[str, str | bool]:
-    """Validate user-submitted code against a kata's expected output."""
-    response = validate_submission(kata_id, body.code)
+    """Validate user-submitted code against a kata's expected output.
+
+    Uses asyncio.to_thread to avoid blocking the event loop during
+    synchronous subprocess execution.
+    """
+    response = await asyncio.to_thread(validate_submission, kata_id, body.code)
     return asdict(response)
