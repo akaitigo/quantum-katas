@@ -11,3 +11,4 @@ frontend-check:
 	cd frontend && pnpm install --frozen-lockfile
 	cd frontend && npx biome check src/
 	cd frontend && npx tsc --noEmit
+	cd frontend && pnpm test
