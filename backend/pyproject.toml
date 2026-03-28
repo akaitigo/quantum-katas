@@ -21,7 +21,7 @@ dev = [
 
 [build-system]
 requires = ["hatchling"]
-build-backend = "hatchling.backends"
+build-backend = "hatchling.build"
 
 # ==============================================================================
 # Ruff
@@ -78,8 +78,6 @@ select = [
     "RUF",    # Ruff 固有ルール
 ]
 ignore = [
-    "ANN101",  # self の型注釈（不要）
-    "ANN102",  # cls の型注釈（不要）
     "ANN401",  # Any の使用（必要な場合あり、レビューで判断）
     "COM812",  # trailing comma（formatter と競合）
     "ISC001",  # implicit string concat（formatter と競合）
