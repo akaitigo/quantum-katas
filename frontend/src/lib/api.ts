@@ -14,8 +14,12 @@ let useMock = false;
 /** Detect if the backend is reachable; fall back to mock if not. */
 async function detectBackend(): Promise<boolean> {
   try {
-    const res = await fetch("/health", { signal: AbortSignal.timeout(2000) });
-    return res.ok;
+    const res = await fetch(`${API_BASE_URL}/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return false;
+    const contentType = res.headers.get("content-type") ?? "";
+    return contentType.includes("application/json");
   } catch {
     return false;
   }
