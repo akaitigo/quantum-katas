@@ -7,7 +7,7 @@ with strict security constraints:
 - No file system access
 - No network access
 - Memory limit: 512 MB
-- Process limit: 50
+- Thread control: OPENBLAS_NUM_THREADS=1
 - Metaclass / dunder attribute access blocked
 """
 
@@ -25,9 +25,8 @@ from quantum_katas.models.execution import ExecutionResult
 
 logger = logging.getLogger(__name__)
 
-EXECUTION_TIMEOUT_SECONDS = 10
+EXECUTION_TIMEOUT_SECONDS = 30
 MEMORY_LIMIT_BYTES = 512 * 1024 * 1024  # 512 MB
-NPROC_LIMIT = 50
 
 ALLOWED_MODULES: frozenset[str] = frozenset(
     {
@@ -149,8 +148,9 @@ def _build_preexec_fn() -> object | None:
     """Build a preexec_fn that sets resource limits (Linux only).
 
     Sets memory (RLIMIT_AS) limit to mitigate resource exhaustion attacks.
-    Process/thread limits are handled via environment variables
-    (OPENBLAS_NUM_THREADS, MKL_NUM_THREADS) to avoid breaking numpy/cirq.
+    Thread limits are handled via environment variables
+    (OPENBLAS_NUM_THREADS, MKL_NUM_THREADS) to avoid breaking numpy/cirq
+    which require threads for initialization (e.g. matplotlib FontManager).
     """
     if platform.system() != "Linux":
         return None
@@ -159,7 +159,6 @@ def _build_preexec_fn() -> object | None:
         import resource  # noqa: PLC0415
 
         resource.setrlimit(resource.RLIMIT_AS, (MEMORY_LIMIT_BYTES, MEMORY_LIMIT_BYTES))
-        resource.setrlimit(resource.RLIMIT_NPROC, (NPROC_LIMIT, NPROC_LIMIT))
 
     return _set_limits
 
