@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class ExecutionRequest(BaseModel):
     """Request body for code execution."""
 
-    code: str = Field(..., min_length=1, max_length=10_000, description="Python (Cirq) code to execute")
+    code: str = Field(..., min_length=1, max_length=50_000, description="Python (Cirq) code to execute")
 
 
 class ExecutionResult(BaseModel):

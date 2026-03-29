@@ -35,30 +35,50 @@ solution_code: |
   result = sim.run(circuit, repetitions=100)
   print(result)
 validation_code: |
-  import cirq
+  # Validates user's code in shared namespace
+  import cirq as _cirq
 
-  q0, q1 = cirq.LineQubit.range(2)
-  circuit = cirq.Circuit([
-      cirq.H(q0),
-      cirq.CNOT(q0, q1),
-      cirq.measure(q0, q1, key='result'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=1000)
-  measurements = result.measurements['result']
-  count_00 = 0
-  count_11 = 0
-  count_other = 0
-  for row in measurements:
+  try:
+      _user_circuit = circuit
+  except NameError:
+      raise AssertionError("変数 'circuit' が定義されていません")
+
+  assert isinstance(circuit, _cirq.Circuit), \
+      "'circuit' は cirq.Circuit のインスタンスである必要があります"
+
+  # Verify circuit contains H and CNOT gates
+  _has_h = False
+  _has_cnot = False
+  for moment in circuit:
+      for op in moment:
+          if op.gate is not None:
+              if isinstance(op.gate, _cirq.ops.HPowGate) and op.gate.exponent == 1:
+                  _has_h = True
+              if isinstance(op.gate, _cirq.ops.CNotPowGate):
+                  _has_cnot = True
+  assert _has_h, "回路にアダマールゲートが含まれていません"
+  assert _has_cnot, "回路にCNOTゲートが含まれていません"
+
+  # Run the user's circuit
+  _sim = _cirq.Simulator()
+  _result = _sim.run(circuit, repetitions=1000)
+  assert 'result' in _result.measurements, "測定キー 'result' が見つかりません"
+  _measurements = _result.measurements['result']
+  _count_00 = 0
+  _count_11 = 0
+  _count_other = 0
+  for row in _measurements:
       if row[0] == 0 and row[1] == 0:
-          count_00 += 1
+          _count_00 += 1
       elif row[0] == 1 and row[1] == 1:
-          count_11 += 1
+          _count_11 += 1
       else:
-          count_other += 1
-  assert count_other == 0, f"|01⟩ や |10⟩ は出現しないはずです (出現回数: {count_other})"
-  ratio = count_00 / (count_00 + count_11)
-  assert 0.35 < ratio < 0.65, f"|00⟩ と |11⟩ がほぼ均等に出現すべきです (|00⟩の割合: {ratio:.2f})"
+          _count_other += 1
+  assert _count_other == 0, \
+      f"|01⟩ や |10⟩ は出現しないはずです (出現回数: {_count_other})"
+  _ratio = _count_00 / (_count_00 + _count_11)
+  assert 0.35 < _ratio < 0.65, \
+      f"|00⟩ と |11⟩ がほぼ均等に出現すべきです (|00⟩の割合: {_ratio:.2f})"
   print("PASSED")
 hints:
   - "まず q0 にアダマールゲートを適用して重ね合わせ状態にします"

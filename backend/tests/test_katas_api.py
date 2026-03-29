@@ -49,6 +49,13 @@ class TestListKatas:
             assert "solution_code" not in kata
             assert "template_code" not in kata
 
+    def test_katas_do_not_expose_validation_code(self, client: TestClient):
+        """H-1: validation_code must not appear in list endpoint."""
+        response = client.get("/api/katas")
+        data = response.json()
+        for kata in data:
+            assert "validation_code" not in kata
+
 
 class TestGetKata:
     """Tests for GET /api/katas/{kata_id}."""
@@ -71,6 +78,12 @@ class TestGetKata:
         response = client.get("/api/katas/01-single-qubit")
         data = response.json()
         assert "solution_code" not in data
+
+    def test_detail_excludes_validation_code(self, client: TestClient):
+        """H-1: validation_code must not appear in detail endpoint."""
+        response = client.get("/api/katas/01-single-qubit")
+        data = response.json()
+        assert "validation_code" not in data
 
     def test_returns_404_for_invalid_id(self, client: TestClient):
         response = client.get("/api/katas/nonexistent-kata")
@@ -109,6 +122,16 @@ class TestValidateKata:
         data = response.json()
         assert data["passed"] is True
 
+    @pytest.mark.slow
+    def test_wrong_answer_fails(self, client: TestClient):
+        """H-3: Wrong answer must return passed=False."""
+        response = client.post(
+            "/api/katas/01-single-qubit/validate",
+            json={"code": "print('hello')"},
+        )
+        data = response.json()
+        assert data["passed"] is False, "print('hello') should not pass validation"
+
     def test_nonexistent_kata_returns_not_passed(self, client: TestClient):
         response = client.post(
             "/api/katas/nonexistent-kata/validate",
@@ -131,3 +154,12 @@ class TestValidateKata:
             json={},
         )
         assert response.status_code == 422
+
+    def test_sandbox_escape_blocked_via_validate(self, client: TestClient):
+        """C-2 via validate API: sandbox escape must be blocked."""
+        response = client.post(
+            "/api/katas/01-single-qubit/validate",
+            json={"code": "().__class__.__bases__[0].__subclasses__()"},
+        )
+        data = response.json()
+        assert data["passed"] is False

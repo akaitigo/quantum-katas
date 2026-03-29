@@ -62,21 +62,37 @@ solution_code: |
   result = sim.run(circuit, repetitions=10)
   print(result)
 validation_code: |
-  import cirq
+  # Validates user's code in shared namespace
+  import cirq as _cirq
 
-  input_qubit = cirq.LineQubit(0)
-  output_qubit = cirq.LineQubit(1)
-  circuit = cirq.Circuit()
-  circuit.append(cirq.X(output_qubit))
-  circuit.append(cirq.H(input_qubit))
-  circuit.append(cirq.H(output_qubit))
-  circuit.append(cirq.CNOT(input_qubit, output_qubit))
-  circuit.append(cirq.H(input_qubit))
-  circuit.append(cirq.measure(input_qubit, key='result'))
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=100)
-  measurements = result.measurements['result'].flatten()
-  assert all(m == 1 for m in measurements), "バランス関数のオラクルでは入力量子ビットは常に1を返すべきです"
+  try:
+      _user_circuit = circuit
+  except NameError:
+      raise AssertionError("変数 'circuit' が定義されていません")
+
+  assert isinstance(circuit, _cirq.Circuit), \
+      "'circuit' は cirq.Circuit のインスタンスである必要があります"
+
+  # Verify circuit contains CNOT (the oracle) and H gates
+  _has_h = False
+  _has_cnot = False
+  for moment in circuit:
+      for op in moment:
+          if op.gate is not None:
+              if isinstance(op.gate, _cirq.ops.HPowGate) and op.gate.exponent == 1:
+                  _has_h = True
+              if isinstance(op.gate, _cirq.ops.CNotPowGate):
+                  _has_cnot = True
+  assert _has_h, "回路にアダマールゲートが含まれていません"
+  assert _has_cnot, "回路にCNOTゲート（オラクル）が含まれていません"
+
+  # Run the user's circuit
+  _sim = _cirq.Simulator()
+  _result = _sim.run(circuit, repetitions=100)
+  assert 'result' in _result.measurements, "測定キー 'result' が見つかりません"
+  _measurements = _result.measurements['result'].flatten()
+  assert all(m == 1 for m in _measurements), \
+      "バランス関数のオラクルでは入力量子ビットは常に1を返すべきです"
   print("PASSED")
 hints:
   - "Step 1: cirq.X(output_qubit) で出力を |1⟩ にし、Step 2: 両方に cirq.H() を適用します"
@@ -88,7 +104,7 @@ explanation: |
   ## ドイチュ-ジョサアルゴリズム
 
   与えられた関数 f: {0,1} → {0,1} が:
-  - **定数関数**: f(0) = f(1) (常に同じ値を返す)
+  - **定��関数**: f(0) = f(1) (常に同じ値を返す)
   - **バランス関数**: f(0) ≠ f(1) (入力によって異なる値を返す)
 
   のどちらかを **1回のクエリ** で判定します。

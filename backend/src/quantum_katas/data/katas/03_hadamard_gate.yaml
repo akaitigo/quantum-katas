@@ -33,20 +33,36 @@ solution_code: |
   result = sim.run(circuit, repetitions=100)
   print(result)
 validation_code: |
-  import cirq
+  # Validates user's code in shared namespace
+  import cirq as _cirq
 
-  q = cirq.LineQubit(0)
-  circuit = cirq.Circuit([
-      cirq.H(q),
-      cirq.measure(q, key='result'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=1000)
-  measurements = result.measurements['result'].flatten()
-  zeros = sum(1 for m in measurements if m == 0)
-  ones = sum(1 for m in measurements if m == 1)
-  ratio = zeros / len(measurements)
-  assert 0.35 < ratio < 0.65, f"0と1がほぼ均等に出現すべきです (0の割合: {ratio:.2f})"
+  try:
+      _user_circuit = circuit
+  except NameError:
+      raise AssertionError("変数 'circuit' が定義されていません")
+
+  assert isinstance(circuit, _cirq.Circuit), \
+      "'circuit' は cirq.Circuit のインスタンスである必要があります"
+
+  # Verify circuit contains an H gate
+  _has_h = any(
+      isinstance(op.gate, _cirq.ops.HPowGate) and op.gate.exponent == 1
+      for moment in circuit
+      for op in moment
+      if op.gate is not None
+  )
+  assert _has_h, "回路にアダマールゲート (cirq.H) が含まれていません"
+
+  # Run the user's circuit
+  _sim = _cirq.Simulator()
+  _result = _sim.run(circuit, repetitions=1000)
+  assert 'result' in _result.measurements, \
+      "測定キー 'result' が見つかりません"
+  _measurements = _result.measurements['result'].flatten()
+  _zeros = sum(1 for m in _measurements if m == 0)
+  _ratio = _zeros / len(_measurements)
+  assert 0.35 < _ratio < 0.65, \
+      f"0と1がほぼ均等に出現すべきです (0の割合: {_ratio:.2f})"
   print("PASSED")
 hints:
   - "アダマールゲートは cirq.H(qubit) で適用できます"

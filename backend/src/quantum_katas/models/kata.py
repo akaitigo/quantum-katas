@@ -60,7 +60,7 @@ class KataSummary:
 
 @dataclass(frozen=True)
 class KataDetail:
-    """Kata detail for the detail endpoint (excludes solution_code)."""
+    """Kata detail for the detail endpoint (excludes solution_code and validation_code)."""
 
     id: str
     title: str
@@ -68,7 +68,6 @@ class KataDetail:
     difficulty: int
     category: str
     template_code: str
-    validation_code: str
     hints: list[str] = field(default_factory=list)
     prerequisites: list[str] = field(default_factory=list)
     explanation: str = ""
