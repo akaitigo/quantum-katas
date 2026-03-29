@@ -29,16 +29,35 @@ solution_code: |
   result = sim.run(circuit, repetitions=10)
   print(result)
 validation_code: |
-  import cirq
+  # Validates user's code in shared namespace
+  import cirq as _cirq
 
-  q = cirq.LineQubit(0)
-  circuit = cirq.Circuit([
-      cirq.measure(q, key='result'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=100)
-  measurements = result.measurements['result']
-  assert all(m == 0 for m in measurements.flatten()), "初期状態の量子ビットは常に0を返すべきです"
+  # User must define 'circuit'
+  try:
+      _user_circuit = circuit
+  except NameError:
+      raise AssertionError("変数 'circuit' が定義されていません。量子回路を 'circuit' という変数に格納してください")
+
+  # circuit must be a cirq.Circuit
+  assert isinstance(circuit, _cirq.Circuit), \
+      "'circuit' は cirq.Circuit のインスタンスである必要があります"
+
+  # circuit must have at least one measurement
+  _has_measurement = any(
+      _cirq.is_measurement(op)
+      for moment in circuit
+      for op in moment
+  )
+  assert _has_measurement, "回路に測定 (measure) が含まれていません"
+
+  # Run the user's circuit and verify
+  _sim = _cirq.Simulator()
+  _result = _sim.run(circuit, repetitions=100)
+  assert 'result' in _result.measurements, \
+      "測定キー 'result' が見つかりません。cirq.measure(q, key='result') を使用してください"
+  _measurements = _result.measurements['result']
+  assert all(m == 0 for m in _measurements.flatten()), \
+      "初期状態の量子ビットは常に0を返すべきです"
   print("PASSED")
 hints:
   - "cirq.LineQubit(0) で量子ビットを作成できます"

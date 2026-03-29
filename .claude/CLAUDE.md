@@ -52,10 +52,14 @@ src/quantum_katas/
 | POST | /api/katas/{id}/check | 正解判定 |
 
 ### セキュリティ: コード実行サンドボックス
-- `subprocess` + タイムアウト（5秒）
-- `import` ホワイトリスト: cirq, numpy, math のみ
+- `subprocess` + タイムアウト（15秒 — Cirq import に ~8s かかるため）
+- `import` ホワイトリスト: cirq, numpy, math のみ（AST検査 + ラ��タイムガード）
+- ダンダー属性アクセスブロック（`__class__`, `__bases__`, `__globals__` 等 — オブジェクトグラフ脱出防止）
 - ファイルI/O・ネットワーク禁止
-- メモリ制限: ulimit で制御
+- メモリ制限: RLIMIT_AS 1GB
+- 同時実行制限: セマフォ（最大3プロセス）
+- validation_code はユーザーコ��ドと同一名前空間で���行（共有変数で正確な採点）
+- validation_code は API レスポンスから除外
 
 ## フロントエンド設計 (frontend/)
 

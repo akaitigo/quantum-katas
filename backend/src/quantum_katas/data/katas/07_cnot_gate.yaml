@@ -38,21 +38,37 @@ solution_code: |
   result = sim.run(circuit, repetitions=10)
   print(result)
 validation_code: |
-  import cirq
+  # Validates user's code in shared namespace
+  import cirq as _cirq
 
-  q0, q1 = cirq.LineQubit.range(2)
-  circuit = cirq.Circuit([
-      cirq.X(q0),
-      cirq.CNOT(q0, q1),
-      cirq.measure(q0, key='control'),
-      cirq.measure(q1, key='target'),
-  ])
-  sim = cirq.Simulator()
-  result = sim.run(circuit, repetitions=100)
-  control = result.measurements['control'].flatten()
-  target = result.measurements['target'].flatten()
-  assert all(c == 1 for c in control), "制御ビットはXゲート適用後なので常に1のはずです"
-  assert all(t == 1 for t in target), "制御ビットが1のとき、CNOTによりターゲットが反転して1になるはずです"
+  try:
+      _user_circuit = circuit
+  except NameError:
+      raise AssertionError("変数 'circuit' が定義されていません")
+
+  assert isinstance(circuit, _cirq.Circuit), \
+      "'circuit' は cirq.Circuit のインスタンスである必要があります"
+
+  # Verify circuit contains a CNOT gate
+  _has_cnot = any(
+      isinstance(op.gate, _cirq.ops.CNotPowGate)
+      for moment in circuit
+      for op in moment
+      if op.gate is not None
+  )
+  assert _has_cnot, "回路にCNOTゲートが含まれていません"
+
+  # Run the user's circuit
+  _sim = _cirq.Simulator()
+  _result = _sim.run(circuit, repetitions=100)
+  assert 'control' in _result.measurements, "測定キー 'control' が見つかりません"
+  assert 'target' in _result.measurements, "測定キー 'target' が見つかりません"
+  _control = _result.measurements['control'].flatten()
+  _target = _result.measurements['target'].flatten()
+  assert all(c == 1 for c in _control), \
+      "制御ビットはXゲート適用後なので常に1のはずです"
+  assert all(t == 1 for t in _target), \
+      "制御ビットが1のとき、CNOTによりターゲットが反転して1になるはずです"
   print("PASSED")
 hints:
   - "CNOTゲートは cirq.CNOT(control, target) で適用できます"

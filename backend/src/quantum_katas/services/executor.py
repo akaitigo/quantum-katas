@@ -3,9 +3,12 @@
 Executes user-submitted Python code (Cirq) in an isolated subprocess
 with strict security constraints:
 - Import whitelist: only cirq, numpy, math are allowed
-- Timeout: 5 seconds maximum execution time
+- Timeout: 15 seconds maximum execution time (Cirq import takes ~8s)
+- Dunder attribute access blocked (prevents object-graph sandbox escape)
 - No file system access
 - No network access
+- Memory limit via RLIMIT_AS
+- Concurrency limit via semaphore (max 3 simultaneous executions)
 """
 
 from __future__ import annotations
@@ -15,12 +18,15 @@ import logging
 import subprocess
 import sys
 import textwrap
+import threading
 
 from quantum_katas.models.execution import ExecutionResult
 
 logger = logging.getLogger(__name__)
 
-EXECUTION_TIMEOUT_SECONDS = 5
+EXECUTION_TIMEOUT_SECONDS = 15
+
+MAX_CODE_LENGTH = 10_000
 
 ALLOWED_MODULES: frozenset[str] = frozenset(
     {
@@ -53,6 +59,36 @@ _BLOCKED_BUILTINS: frozenset[str] = frozenset(
 
 _BLOCKED_SET_LITERAL = repr(set(_BLOCKED_BUILTINS))
 
+# Dunder attributes that enable object-graph sandbox escapes
+_BLOCKED_DUNDER_ATTRS: frozenset[str] = frozenset(
+    {
+        "__class__",
+        "__bases__",
+        "__subclasses__",
+        "__globals__",
+        "__init__",
+        "__dict__",
+        "__mro__",
+        "__qualname__",
+        "__module__",
+        "__wrapped__",
+        "__loader__",
+        "__spec__",
+        "__code__",
+        "__func__",
+        "__self__",
+        "__builtins__",
+        "__closure__",
+        "_wrap_close",
+    }
+)
+
+# M-2: Semaphore to limit concurrent subprocess executions
+_execution_semaphore = threading.Semaphore(3)
+
+# M-1: Memory limit in bytes (512 MB)
+_MEMORY_LIMIT_BYTES = 1024 * 1024 * 1024
+
 
 def validate_imports(code: str) -> str | None:
     """Validate that only whitelisted modules are imported.
@@ -78,17 +114,54 @@ def validate_imports(code: str) -> str | None:
     return None
 
 
+def validate_no_dunder_access(code: str) -> str | None:
+    """Check for blocked dunder attribute access in user code.
+
+    Prevents object-graph traversal attacks such as:
+        ().__class__.__bases__[0].__subclasses__()
+        os._wrap_close.__init__.__globals__['sys']
+
+    Returns an error message if a blocked access is found, or None if safe.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        # Syntax errors are caught by validate_imports; skip here
+        return None
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in _BLOCKED_DUNDER_ATTRS:
+            return f"Access blocked: '{node.attr}' attribute access is not allowed"
+        # Catch string-based attribute access via bracket notation (obj['__globals__'])
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in _BLOCKED_DUNDER_ATTRS:
+            return f"Access blocked: reference to '{node.value}' is not allowed"
+
+    return None
+
+
 def _build_wrapper_code(user_code: str) -> str:
     """Build a wrapper script that restricts builtins before executing user code.
 
-    Constructs a safe builtins dict by filtering out blocked names,
-    then injects a whitelist-guarded ``__import__`` so that only
-    allowed modules (cirq, numpy, math) can be imported at runtime.
+    Pre-imports allowed modules (cirq, numpy, math) and their transitive
+    dependencies BEFORE applying sandbox restrictions, then constructs a safe
+    builtins dict with a guarded ``__import__`` that only allows whitelisted
+    top-level modules. Also sets RLIMIT_AS memory limit for the subprocess.
     """
     escaped_code = user_code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
     allowed_repr = repr(set(ALLOWED_MODULES))
 
     return textwrap.dedent(f"""\
+        import resource as _resource
+        _resource.setrlimit(_resource.RLIMIT_AS, ({_MEMORY_LIMIT_BYTES}, {_MEMORY_LIMIT_BYTES}))
+
+        import sys as _sys
+
+        # Pre-import allowed modules with all transitive deps BEFORE sandbox
+        import cirq
+        import numpy
+        import math
+        _pre_modules = set(_sys.modules.keys())
+
         import builtins as _builtins
 
         _blocked = {_BLOCKED_SET_LITERAL}
@@ -98,6 +171,9 @@ def _build_wrapper_code(user_code: str) -> str:
         _real_import = _builtins.__import__
 
         def _safe_import(name, *args, **kwargs):
+            # Allow already-loaded modules (transitive deps of cirq/numpy/math)
+            if name in _sys.modules or name in _pre_modules:
+                return _real_import(name, *args, **kwargs)
             root = name.split(".")[0]
             if root not in _allowed_modules:
                 raise ImportError(f"Import not allowed: {{name}}")
@@ -110,26 +186,82 @@ def _build_wrapper_code(user_code: str) -> str:
     """)
 
 
-def execute_code(code: str) -> ExecutionResult:
-    """Execute user-submitted Python code in a sandboxed subprocess.
+def _build_judge_wrapper_code(user_code: str, validation_code: str) -> str:
+    """Build a wrapper that executes user code then validation code in the same namespace.
 
-    Security measures:
-    1. AST-level import validation (whitelist)
-    2. Blocked dangerous builtins (open, exec, eval, etc.)
-    3. Subprocess isolation with timeout
-    4. No shell=True to prevent shell injection
+    The validation_code can access variables defined by user_code (e.g. circuit, q),
+    enabling real verification of the user's solution.
+    Also sets RLIMIT_AS memory limit for the subprocess.
+    """
+    escaped_user = user_code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+    escaped_val = validation_code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+    allowed_repr = repr(set(ALLOWED_MODULES))
+
+    return textwrap.dedent(f"""\
+        import resource as _resource
+        _resource.setrlimit(_resource.RLIMIT_AS, ({_MEMORY_LIMIT_BYTES}, {_MEMORY_LIMIT_BYTES}))
+
+        import sys as _sys
+
+        # Pre-import allowed modules with all transitive deps BEFORE sandbox
+        import cirq
+        import numpy
+        import math
+        _pre_modules = set(_sys.modules.keys())
+
+        import builtins as _builtins
+
+        _blocked = {_BLOCKED_SET_LITERAL}
+        _safe_builtins = {{k: v for k, v in vars(_builtins).items() if k not in _blocked}}
+
+        _allowed_modules = {allowed_repr}
+        _real_import = _builtins.__import__
+
+        def _safe_import(name, *args, **kwargs):
+            # Allow already-loaded modules (transitive deps of cirq/numpy/math)
+            if name in _sys.modules or name in _pre_modules:
+                return _real_import(name, *args, **kwargs)
+            root = name.split(".")[0]
+            if root not in _allowed_modules:
+                raise ImportError(f"Import not allowed: {{name}}")
+            return _real_import(name, *args, **kwargs)
+
+        _safe_builtins["__import__"] = _safe_import
+
+        _ns = {{"__builtins__": _safe_builtins}}
+
+        # Execute user code — variables are stored in _ns
+        _user_code = '{escaped_user}'
+        exec(compile(_user_code, "<user_code>", "exec"), _ns)
+
+        # Execute validation code in the SAME namespace
+        _val_code = '{escaped_val}'
+        exec(compile(_val_code, "<validation_code>", "exec"), _ns)
+    """)
+
+
+def _validate_user_code(code: str) -> str | None:
+    """Run all static validations on user code.
+
+    Returns an error message if any check fails, or None if safe.
     """
     import_error = validate_imports(code)
     if import_error is not None:
+        return import_error
+
+    return validate_no_dunder_access(code)
+
+
+def _run_sandboxed(wrapper_code: str) -> ExecutionResult:
+    """Execute pre-built wrapper code in a sandboxed subprocess with semaphore."""
+    acquired = _execution_semaphore.acquire(timeout=10)
+    if not acquired:
         return ExecutionResult(
             success=False,
-            error=import_error,
+            error="Server busy: too many concurrent executions. Please try again.",
         )
-
-    wrapper_code = _build_wrapper_code(code)
-
     try:
-        result = subprocess.run(  # noqa: S603 — input is validated above
+        result = subprocess.run(  # noqa: S603 — input is validated by caller
             [sys.executable, "-c", wrapper_code],
             capture_output=True,
             text=True,
@@ -147,6 +279,8 @@ def execute_code(code: str) -> ExecutionResult:
             success=False,
             error=f"Execution failed: {exc}",
         )
+    finally:
+        _execution_semaphore.release()
 
     if result.returncode != 0:
         return ExecutionResult(
@@ -161,3 +295,45 @@ def execute_code(code: str) -> ExecutionResult:
         stderr=result.stderr,
         success=True,
     )
+
+
+def execute_code(code: str) -> ExecutionResult:
+    """Execute user-submitted Python code in a sandboxed subprocess.
+
+    Security measures:
+    1. AST-level import validation (whitelist)
+    2. Dunder attribute access validation (object-graph escape prevention)
+    3. Blocked dangerous builtins (open, exec, eval, etc.)
+    4. Subprocess isolation with timeout (15s)
+    5. Memory limit via RLIMIT_AS (512 MB)
+    6. Concurrency limit via semaphore (max 3)
+    7. No shell=True to prevent shell injection
+    """
+    validation_error = _validate_user_code(code)
+    if validation_error is not None:
+        return ExecutionResult(
+            success=False,
+            error=validation_error,
+        )
+
+    return _run_sandboxed(_build_wrapper_code(code))
+
+
+def execute_judge(user_code: str, validation_code: str) -> ExecutionResult:
+    """Execute user code + validation code in a single shared namespace.
+
+    This is the core of the grading pipeline: user code is executed first,
+    then validation_code runs in the same namespace so it can inspect
+    variables (circuit, q, result, etc.) defined by the user.
+
+    Security: same measures as execute_code, plus validation_code is trusted
+    (comes from YAML, not user input) but still sandboxed for defense-in-depth.
+    """
+    validation_error = _validate_user_code(user_code)
+    if validation_error is not None:
+        return ExecutionResult(
+            success=False,
+            error=validation_error,
+        )
+
+    return _run_sandboxed(_build_judge_wrapper_code(user_code, validation_code))

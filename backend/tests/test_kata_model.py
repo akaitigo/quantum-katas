@@ -128,7 +128,7 @@ class TestKataModel:
         )
         assert summary.id == "test-kata"
 
-    def test_kata_detail_excludes_solution(self):
+    def test_kata_detail_excludes_solution_and_validation(self):
         detail = KataDetail(
             id="test-kata",
             title="Test",
@@ -136,12 +136,12 @@ class TestKataModel:
             difficulty=1,
             category="basics",
             template_code="# template",
-            validation_code="# validation",
             hints=["hint1"],
             prerequisites=[],
             explanation="explanation",
         )
         assert not hasattr(detail, "solution_code")
+        assert not hasattr(detail, "validation_code")
 
 
 class TestKataRegistry:

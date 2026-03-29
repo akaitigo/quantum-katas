@@ -6,6 +6,7 @@ from quantum_katas.services.executor import (
     ALLOWED_MODULES,
     execute_code,
     validate_imports,
+    validate_no_dunder_access,
 )
 
 
@@ -60,6 +61,70 @@ class TestValidateImports:
 
     def test_allowed_modules_frozen(self):
         assert isinstance(ALLOWED_MODULES, frozenset)
+
+
+class TestValidateDunderAccess:
+    """Tests for dunder attribute access validation (C-2)."""
+
+    def test_class_access_blocked(self):
+        result = validate_no_dunder_access("().__class__")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_bases_access_blocked(self):
+        result = validate_no_dunder_access("x.__bases__")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_subclasses_access_blocked(self):
+        result = validate_no_dunder_access("x.__subclasses__()")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_globals_access_blocked(self):
+        result = validate_no_dunder_access("f.__globals__")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_init_access_blocked(self):
+        result = validate_no_dunder_access("x.__init__")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_dict_access_blocked(self):
+        result = validate_no_dunder_access("x.__dict__")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_mro_access_blocked(self):
+        result = validate_no_dunder_access("x.__mro__")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_wrap_close_string_blocked(self):
+        result = validate_no_dunder_access("x['_wrap_close']")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_globals_string_blocked(self):
+        result = validate_no_dunder_access("x['__globals__']")
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    def test_full_escape_chain_blocked(self):
+        """The complete object-graph escape chain must be blocked."""
+        code = "().__class__.__bases__[0].__subclasses__()"
+        result = validate_no_dunder_access(code)
+        assert result is not None
+
+    def test_safe_code_passes(self):
+        result = validate_no_dunder_access("x = 1 + 2\nprint(x)")
+        assert result is None
+
+    def test_cirq_code_passes(self):
+        code = "import cirq\nq = cirq.LineQubit(0)\ncircuit = cirq.Circuit([cirq.H(q)])"
+        result = validate_no_dunder_access(code)
+        assert result is None
 
 
 class TestExecuteCode:
@@ -147,6 +212,22 @@ print(result)
         assert result.success is True
         assert result.stdout == ""
 
+    def test_dunder_class_blocked(self):
+        """C-2: Object-graph sandbox escape must be blocked."""
+        result = execute_code("().__class__.__bases__[0].__subclasses__()")
+        assert result.success is False
+        assert "blocked" in (result.error or "").lower()
+
+    def test_dunder_globals_blocked(self):
+        result = execute_code("print.__init__.__globals__['sys']")
+        assert result.success is False
+        assert "blocked" in (result.error or "").lower()
+
+    def test_wrap_close_escape_blocked(self):
+        result = execute_code("x = ''.__class__.__mro__[1].__subclasses__()")
+        assert result.success is False
+        assert "blocked" in (result.error or "").lower()
+
 
 class TestExecuteEndpoint:
     """Tests for the /api/execute endpoint (integration)."""
@@ -172,3 +253,14 @@ class TestExecuteEndpoint:
     def test_execute_missing_code(self, client):
         response = client.post("/api/execute", json={})
         assert response.status_code == 422
+
+    def test_execute_dunder_blocked(self, client):
+        """C-2 via API: sandbox escape attempt must be blocked."""
+        response = client.post(
+            "/api/execute",
+            json={"code": "().__class__.__bases__[0].__subclasses__()"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "blocked" in data["error"].lower()

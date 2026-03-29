@@ -89,7 +89,6 @@ def get_kata_by_id(kata_id: str) -> KataDetail | None:
         difficulty=kata.difficulty,
         category=kata.category,
         template_code=kata.template_code,
-        validation_code=kata.validation_code,
         hints=list(kata.hints),
         prerequisites=list(kata.prerequisites),
         explanation=kata.explanation,
