@@ -10,7 +10,9 @@ interface ExecutionResultProps {
 
 function LoadingSpinner({
   message,
-}: { readonly message: string }): React.JSX.Element {
+}: {
+  readonly message: string;
+}): React.JSX.Element {
   return (
     <div className="execution-loading" data-testid="execution-loading">
       <div className="loading-spinner" />
@@ -38,7 +40,9 @@ function OutputBlock({
 
 function CircuitDiagram({
   stdout,
-}: { readonly stdout: string }): React.JSX.Element | null {
+}: {
+  readonly stdout: string;
+}): React.JSX.Element | null {
   // Detect Cirq circuit output patterns (lines with dashes, pipes, and gate symbols)
   const circuitPattern = /^[0-9a-z_]+(\(\d+\))?:\s*[-─|×@H#TXYZMS\s]+/m;
   if (!stdout || !circuitPattern.test(stdout)) return null;

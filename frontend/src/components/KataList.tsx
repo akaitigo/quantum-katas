@@ -1,20 +1,24 @@
+import { Link } from "react-router-dom";
 import { useKataList } from "@/hooks/useKatas";
 import { useProgress } from "@/hooks/useProgress";
 import { isMockMode } from "@/lib/api";
 import { CATEGORY_LABELS, CATEGORY_ORDER, TOTAL_KATAS } from "@/lib/constants";
 import type { KataSummary } from "@/types/kata";
-import { Link } from "react-router-dom";
 import { ProgressBar } from "./ProgressBar";
 
 function DifficultyBadge({
   difficulty,
-}: { readonly difficulty: number }): React.JSX.Element {
+}: {
+  readonly difficulty: number;
+}): React.JSX.Element {
   return <span className="badge badge-difficulty">{difficulty}/10</span>;
 }
 
 function CategoryBadge({
   category,
-}: { readonly category: string }): React.JSX.Element {
+}: {
+  readonly category: string;
+}): React.JSX.Element {
   const label = CATEGORY_LABELS[category] ?? category;
   return (
     <span className={`badge badge-category badge-category-${category}`}>

@@ -1,9 +1,9 @@
-import { setMockMode } from "@/lib/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setMockMode } from "@/lib/api";
 import { KataDetail } from "./KataDetail";
 
 // Mock Monaco Editor to avoid loading in test environment

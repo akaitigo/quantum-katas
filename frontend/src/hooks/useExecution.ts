@@ -1,6 +1,6 @@
+import { useCallback, useState } from "react";
 import { executeCode, isMockMode } from "@/lib/api";
 import type { ExecutionResult } from "@/types/execution";
-import { useCallback, useState } from "react";
 
 interface UseExecutionReturn {
   readonly executionResult: ExecutionResult | null;

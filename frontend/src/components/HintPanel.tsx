@@ -1,5 +1,5 @@
-import { PROGRESS_STORAGE_KEY } from "@/lib/constants";
 import { useCallback, useEffect, useState } from "react";
+import { PROGRESS_STORAGE_KEY } from "@/lib/constants";
 
 /** Key used to store hint visibility state in localStorage. */
 const HINTS_STORAGE_KEY = `${PROGRESS_STORAGE_KEY}-hints`;
@@ -46,7 +46,7 @@ interface HintPanelProps {
 export function HintPanel({
   kataId,
   hints,
-}: HintPanelProps): React.JSX.Element {
+}: HintPanelProps): React.JSX.Element | null {
   const [visibleCount, setVisibleCount] = useState<number>(() => {
     const state = loadHintState();
     return state[kataId] ?? 0;
@@ -84,7 +84,7 @@ export function HintPanel({
     });
   }, []);
 
-  if (hints.length === 0) return <></>;
+  if (hints.length === 0) return null;
 
   return (
     <div className="hints-section" data-testid="hint-panel">
