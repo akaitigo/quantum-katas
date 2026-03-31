@@ -2,10 +2,10 @@ import type { ExecutionResult } from "@/types/execution";
 import type { KataDetail, KataSummary, ValidateResponse } from "@/types/kata";
 import { API_BASE_URL } from "./constants";
 import {
-  MOCK_KATA_SUMMARIES,
   getMockExecuteResponse,
   getMockKataDetail,
   getMockValidateResponse,
+  MOCK_KATA_SUMMARIES,
 } from "./mock-data";
 
 /** Whether to use mock data instead of the real backend. */

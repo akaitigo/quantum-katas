@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { CodeEditor } from "@/components/CodeEditor";
 import { ExecutionResult } from "@/components/ExecutionResult";
 import { HintPanel } from "@/components/HintPanel";
@@ -7,8 +9,6 @@ import { useProgress } from "@/hooks/useProgress";
 import { isMockMode, validateKata } from "@/lib/api";
 import { CATEGORY_LABELS, TOTAL_KATAS } from "@/lib/constants";
 import type { ValidateResponse } from "@/types/kata";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
 
 function CelebrationBanner(): React.JSX.Element {
   return (

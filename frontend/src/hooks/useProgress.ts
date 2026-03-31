@@ -1,5 +1,5 @@
-import { PROGRESS_STORAGE_KEY } from "@/lib/constants";
 import { useCallback, useSyncExternalStore } from "react";
+import { PROGRESS_STORAGE_KEY } from "@/lib/constants";
 
 /**
  * Progress store backed by localStorage.

@@ -1,6 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { fetchKataDetail, fetchKatas } from "@/lib/api";
 import type { KataDetail, KataSummary } from "@/types/kata";
-import { useQuery } from "@tanstack/react-query";
 
 /** Fetch all katas as summaries. */
 export function useKataList(): {

@@ -17,7 +17,6 @@ export function ProgressBar({
         aria-valuenow={percent}
         aria-valuemin={0}
         aria-valuemax={100}
-        tabIndex={0}
         aria-label={`進捗: ${String(percent)}%`}
       >
         <div
