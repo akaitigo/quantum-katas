@@ -7,7 +7,7 @@ import { useProgress } from "@/hooks/useProgress";
 import { isMockMode, validateKata } from "@/lib/api";
 import { CATEGORY_LABELS, TOTAL_KATAS } from "@/lib/constants";
 import type { ValidateResponse } from "@/types/kata";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 function CelebrationBanner(): React.JSX.Element {
@@ -34,6 +34,17 @@ export function KataDetail(): React.JSX.Element {
   const [validationResult, setValidationResult] =
     useState<ValidateResponse | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+
+  // Reset editor/result state when navigating between katas.
+  // resolvedId is intentionally listed to trigger reset on kata change,
+  // even though it is not referenced inside the callback.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resolvedId triggers reset on kata navigation
+  useEffect(() => {
+    setCode(null);
+    setValidationResult(null);
+    setIsValidating(false);
+    clearResult();
+  }, [resolvedId, clearResult]);
 
   // Determine prev / next katas based on ordered list
   const { prevKata, nextKata } = useMemo(() => {

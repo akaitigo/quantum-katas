@@ -28,7 +28,7 @@ vi.mock("@monaco-editor/react", () => {
   };
 });
 
-function renderWithRoute(kataId: string) {
+function renderWithRoute(kataId: string, allEntries?: string[]) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -37,9 +37,11 @@ function renderWithRoute(kataId: string) {
     },
   });
 
+  const entries = allEntries ?? [`/kata/${kataId}`];
+
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/kata/${kataId}`]}>
+      <MemoryRouter initialEntries={entries}>
         <Routes>
           <Route path="/kata/:kataId" element={<KataDetail />} />
         </Routes>
@@ -180,6 +182,65 @@ describe("KataDetail", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("hint-panel")).toBeInTheDocument();
+      expect(screen.getByText("Hints (0/3)")).toBeInTheDocument();
+    });
+  });
+
+  it("resets editor code when navigating to a different kata", async () => {
+    const user = userEvent.setup();
+    renderWithRoute("01-single-qubit");
+
+    // Wait for kata 01 to load
+    await waitFor(() => {
+      expect(screen.getByText("量子ビットの基礎")).toBeInTheDocument();
+    });
+
+    // Edit code in the editor
+    const textarea =
+      screen.getByLabelText<HTMLTextAreaElement>("コードエディタ");
+    await user.clear(textarea);
+    await user.type(textarea, "print('edited')");
+    expect(textarea.value).toContain("edited");
+
+    // Navigate to kata 02 via the bottom nav link (partial text match)
+    const nextLink = screen.getByRole("link", {
+      name: /Pauli-X/,
+    });
+    await user.click(nextLink);
+
+    // Wait for kata 02 to load — editor should have kata 02 template, not kata 01 edits
+    await waitFor(() => {
+      const title = screen.getByRole("heading", { level: 1 });
+      expect(title.textContent).toContain("Pauli-X");
+    });
+
+    const updatedTextarea =
+      screen.getByLabelText<HTMLTextAreaElement>("コードエディタ");
+    expect(updatedTextarea.value).not.toContain("edited");
+    expect(updatedTextarea.value).toContain("cirq.LineQubit(0)");
+  });
+
+  it("resets hint count when navigating to a different kata", async () => {
+    const user = userEvent.setup();
+    renderWithRoute("01-single-qubit");
+
+    // Wait for kata 01 to load
+    await waitFor(() => {
+      expect(screen.getByText("量子ビットの基礎")).toBeInTheDocument();
+    });
+
+    // Reveal a hint on kata 01
+    await user.click(screen.getByTestId("show-next-hint"));
+    expect(screen.getByText("Hints (1/3)")).toBeInTheDocument();
+
+    // Navigate to kata 02 via the bottom nav link
+    const nextLink = screen.getByRole("link", {
+      name: /Pauli-X/,
+    });
+    await user.click(nextLink);
+
+    // Hint count should reset to 0 for kata 02
+    await waitFor(() => {
       expect(screen.getByText("Hints (0/3)")).toBeInTheDocument();
     });
   });
