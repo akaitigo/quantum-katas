@@ -98,4 +98,38 @@ describe("HintPanel", () => {
     expect(screen.getByText(HINT_1)).toBeInTheDocument();
     expect(screen.getByText(HINT_2)).toBeInTheDocument();
   });
+
+  it("resets visibleCount when kataId changes", async () => {
+    const user = userEvent.setup();
+    const HINTS_B = ["Hint B-1", "Hint B-2"];
+
+    const { rerender } = render(<HintPanel kataId="kata-a" hints={HINTS} />);
+
+    // Show 2 hints for kata-a
+    await user.click(screen.getByTestId("show-next-hint"));
+    await user.click(screen.getByTestId("show-next-hint"));
+    expect(screen.getByText("Hints (2/3)")).toBeInTheDocument();
+
+    // Switch to kata-b — visibleCount should reset to 0
+    rerender(<HintPanel kataId="kata-b" hints={HINTS_B} />);
+    expect(screen.getByText("Hints (0/2)")).toBeInTheDocument();
+  });
+
+  it("restores persisted count when switching back to a previously viewed kata", async () => {
+    const user = userEvent.setup();
+
+    const { rerender } = render(<HintPanel kataId="kata-a" hints={HINTS} />);
+
+    // Show 1 hint for kata-a (persisted to localStorage)
+    await user.click(screen.getByTestId("show-next-hint"));
+    expect(screen.getByText("Hints (1/3)")).toBeInTheDocument();
+
+    // Switch to kata-b
+    rerender(<HintPanel kataId="kata-b" hints={HINTS} />);
+    expect(screen.getByText("Hints (0/3)")).toBeInTheDocument();
+
+    // Switch back to kata-a — should restore 1 from localStorage
+    rerender(<HintPanel kataId="kata-a" hints={HINTS} />);
+    expect(screen.getByText("Hints (1/3)")).toBeInTheDocument();
+  });
 });

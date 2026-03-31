@@ -1,5 +1,5 @@
 import { PROGRESS_STORAGE_KEY } from "@/lib/constants";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 /** Key used to store hint visibility state in localStorage. */
 const HINTS_STORAGE_KEY = `${PROGRESS_STORAGE_KEY}-hints`;
@@ -55,6 +55,13 @@ export function HintPanel({
   const [collapsedHints, setCollapsedHints] = useState<ReadonlySet<number>>(
     () => new Set<number>(),
   );
+
+  // Re-initialise when switching to a different kata
+  useEffect(() => {
+    const state = loadHintState();
+    setVisibleCount(state[kataId] ?? 0);
+    setCollapsedHints(new Set<number>());
+  }, [kataId]);
 
   const showNextHint = useCallback(() => {
     setVisibleCount((prev) => {
