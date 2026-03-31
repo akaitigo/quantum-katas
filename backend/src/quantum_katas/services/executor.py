@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import os
 import subprocess
 import sys
 import textwrap
@@ -272,8 +273,6 @@ def _sandbox_env() -> dict[str, str]:
     Limits OpenBLAS thread count to avoid hitting RLIMIT_NPROC during
     NumPy/Cirq import.
     """
-    import os
-
     env = os.environ.copy()
     env["OPENBLAS_NUM_THREADS"] = "1"
     env["MKL_NUM_THREADS"] = "1"
