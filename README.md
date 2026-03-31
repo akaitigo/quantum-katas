@@ -134,16 +134,16 @@ graph TB
 | Backend lint/format | Ruff (120行制限, 70+ルール有効) |
 | Frontend lint/format | Biome (`any` 禁止, `noExplicitAny: error`) |
 | Backend テスト | pytest + pytest-cov (カバレッジ 80% 以上必須, 現在 96%) |
-| Frontend テスト | Vitest + Testing Library (54 テスト) |
+| Frontend テスト | Vitest + Testing Library (58 テスト) |
 | 型安全性 | TypeScript strict mode + `noUncheckedIndexedAccess` |
 | セキュリティ | コード実行サンドボックス (AST検証 + builtins制限 + タイムアウト) |
 | ADR | `docs/adr/001-code-execution-sandbox.md` |
 
 ### テストカバレッジ
 
-- **Backend**: 76 テスト, カバレッジ 96% (80% 必須)
-- **Frontend**: 54 テスト (8 テストファイル)
-- **合計**: 130 テスト
+- **Backend**: 104 テスト, カバレッジ 96% (80% 必須)
+- **Frontend**: 58 テスト (8 テストファイル)
+- **合計**: 162 テスト
 
 ## 技術スタック
 
@@ -163,7 +163,7 @@ quantum-katas/
 │   │   ├── services/          # ビジネスロジック (executor, judge, registry)
 │   │   ├── models/            # データモデル
 │   │   └── data/katas/        # カタ定義 (YAML x 10)
-│   ├── tests/                 # pytest テスト (76件)
+│   ├── tests/                 # pytest テスト (104件)
 │   └── pyproject.toml
 ├── frontend/
 │   ├── src/
