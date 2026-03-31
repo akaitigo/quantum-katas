@@ -86,8 +86,14 @@ _BLOCKED_DUNDER_ATTRS: frozenset[str] = frozenset(
 # M-2: Semaphore to limit concurrent subprocess executions
 _execution_semaphore = threading.Semaphore(3)
 
-# M-1: Memory limit in bytes (512 MB)
+# M-1: Memory limit in bytes (1 GB — Cirq import needs headroom)
 _MEMORY_LIMIT_BYTES = 1024 * 1024 * 1024
+
+# H-3: Max child processes / threads allowed in the sandbox.
+# OpenBLAS (used by NumPy) spawns up to OPENBLAS_NUM_THREADS threads at import
+# time, so this limit must accommodate them. We also set OPENBLAS_NUM_THREADS=1
+# in the subprocess environment to minimise thread count.
+_MAX_NPROC = 64
 
 
 def validate_imports(code: str) -> str | None:
@@ -139,22 +145,27 @@ def validate_no_dunder_access(code: str) -> str | None:
     return None
 
 
-def _build_wrapper_code(user_code: str) -> str:
+def _build_wrapper_code() -> str:
     """Build a wrapper script that restricts builtins before executing user code.
 
     Pre-imports allowed modules (cirq, numpy, math) and their transitive
     dependencies BEFORE applying sandbox restrictions, then constructs a safe
     builtins dict with a guarded ``__import__`` that only allows whitelisted
-    top-level modules. Also sets RLIMIT_AS memory limit for the subprocess.
+    top-level modules. Also sets RLIMIT_AS and RLIMIT_NPROC limits.
+
+    User code is read from stdin to avoid string-escaping injection (C-2).
     """
-    escaped_code = user_code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
     allowed_repr = repr(set(ALLOWED_MODULES))
 
     return textwrap.dedent(f"""\
         import resource as _resource
         _resource.setrlimit(_resource.RLIMIT_AS, ({_MEMORY_LIMIT_BYTES}, {_MEMORY_LIMIT_BYTES}))
+        _resource.setrlimit(_resource.RLIMIT_NPROC, ({_MAX_NPROC}, {_MAX_NPROC}))
 
         import sys as _sys
+
+        # Read user code from stdin — avoids string-escaping injection
+        _code = _sys.stdin.read()
 
         # Pre-import allowed modules with all transitive deps BEFORE sandbox
         import cirq
@@ -181,27 +192,32 @@ def _build_wrapper_code(user_code: str) -> str:
 
         _safe_builtins["__import__"] = _safe_import
 
-        _code = '{escaped_code}'
         exec(compile(_code, "<user_code>", "exec"), {{"__builtins__": _safe_builtins}})
     """)
 
 
-def _build_judge_wrapper_code(user_code: str, validation_code: str) -> str:
+def _build_judge_wrapper_code() -> str:
     """Build a wrapper that executes user code then validation code in the same namespace.
 
     The validation_code can access variables defined by user_code (e.g. circuit, q),
     enabling real verification of the user's solution.
-    Also sets RLIMIT_AS memory limit for the subprocess.
+    Also sets RLIMIT_AS and RLIMIT_NPROC limits.
+
+    Both code blocks are read from stdin (NUL-separated) to avoid injection (C-2).
     """
-    escaped_user = user_code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
-    escaped_val = validation_code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
     allowed_repr = repr(set(ALLOWED_MODULES))
 
     return textwrap.dedent(f"""\
         import resource as _resource
         _resource.setrlimit(_resource.RLIMIT_AS, ({_MEMORY_LIMIT_BYTES}, {_MEMORY_LIMIT_BYTES}))
+        _resource.setrlimit(_resource.RLIMIT_NPROC, ({_MAX_NPROC}, {_MAX_NPROC}))
 
         import sys as _sys
+
+        # Read user code and validation code from stdin (NUL-separated)
+        _parts = _sys.stdin.read().split("\\0")
+        _user_code = _parts[0]
+        _val_code = _parts[1] if len(_parts) > 1 else ""
 
         # Pre-import allowed modules with all transitive deps BEFORE sandbox
         import cirq
@@ -231,11 +247,9 @@ def _build_judge_wrapper_code(user_code: str, validation_code: str) -> str:
         _ns = {{"__builtins__": _safe_builtins}}
 
         # Execute user code — variables are stored in _ns
-        _user_code = '{escaped_user}'
         exec(compile(_user_code, "<user_code>", "exec"), _ns)
 
         # Execute validation code in the SAME namespace
-        _val_code = '{escaped_val}'
         exec(compile(_val_code, "<validation_code>", "exec"), _ns)
     """)
 
@@ -252,8 +266,26 @@ def _validate_user_code(code: str) -> str | None:
     return validate_no_dunder_access(code)
 
 
-def _run_sandboxed(wrapper_code: str) -> ExecutionResult:
-    """Execute pre-built wrapper code in a sandboxed subprocess with semaphore."""
+def _sandbox_env() -> dict[str, str]:
+    """Build a restricted environment for the sandbox subprocess.
+
+    Limits OpenBLAS thread count to avoid hitting RLIMIT_NPROC during
+    NumPy/Cirq import.
+    """
+    import os
+
+    env = os.environ.copy()
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    env["MKL_NUM_THREADS"] = "1"
+    return env
+
+
+def _run_sandboxed(wrapper_code: str, stdin_data: str) -> ExecutionResult:
+    """Execute pre-built wrapper code in a sandboxed subprocess with semaphore.
+
+    User code is passed via stdin (not command-line) to prevent
+    string-escaping injection attacks (C-2).
+    """
     acquired = _execution_semaphore.acquire(timeout=10)
     if not acquired:
         return ExecutionResult(
@@ -263,10 +295,12 @@ def _run_sandboxed(wrapper_code: str) -> ExecutionResult:
     try:
         result = subprocess.run(  # noqa: S603 — input is validated by caller
             [sys.executable, "-c", wrapper_code],
+            input=stdin_data,
             capture_output=True,
             text=True,
             timeout=EXECUTION_TIMEOUT_SECONDS,
             check=False,
+            env=_sandbox_env(),
         )
     except subprocess.TimeoutExpired:
         return ExecutionResult(
@@ -316,7 +350,7 @@ def execute_code(code: str) -> ExecutionResult:
             error=validation_error,
         )
 
-    return _run_sandboxed(_build_wrapper_code(code))
+    return _run_sandboxed(_build_wrapper_code(), stdin_data=code)
 
 
 def execute_judge(user_code: str, validation_code: str) -> ExecutionResult:
@@ -336,4 +370,6 @@ def execute_judge(user_code: str, validation_code: str) -> ExecutionResult:
             error=validation_error,
         )
 
-    return _run_sandboxed(_build_judge_wrapper_code(user_code, validation_code))
+    # NUL-separate user code and validation code for stdin transport
+    stdin_data = f"{user_code}\0{validation_code}"
+    return _run_sandboxed(_build_judge_wrapper_code(), stdin_data=stdin_data)
