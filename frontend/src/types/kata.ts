@@ -15,7 +15,6 @@ export interface KataDetail {
   readonly difficulty: number;
   readonly category: string;
   readonly template_code: string;
-  readonly validation_code: string;
   readonly hints: readonly string[];
   readonly prerequisites: readonly string[];
   readonly explanation: string;

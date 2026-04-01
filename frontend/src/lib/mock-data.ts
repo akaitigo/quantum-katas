@@ -93,7 +93,7 @@ const MOCK_KATA_DETAILS: Record<string, KataDetail> = {
 # シミュレーターで回路を実行し、結果を表示してください
 sim = cirq.Simulator()
 # YOUR CODE HERE`,
-    validation_code: "",
+
     hints: [
       "cirq.LineQubit(0) で量子ビットを作成できます",
       "cirq.Circuit([cirq.measure(q, key='result')]) で測定回路を作成します",
@@ -128,7 +128,7 @@ circuit = cirq.Circuit([
 sim = cirq.Simulator()
 result = sim.run(circuit, repetitions=10)
 print(result)`,
-    validation_code: "",
+
     hints: [
       "cirq.X(q) で Pauli-X ゲートを適用できます",
       "X ゲートは |0> を |1> に、|1> を |0> に反転します",
@@ -158,7 +158,7 @@ export function getMockKataDetail(kataId: string): KataDetail | undefined {
     difficulty: summary.difficulty,
     category: summary.category,
     template_code: "import cirq\n\n# YOUR CODE HERE\n",
-    validation_code: "",
+
     hints: [
       "Cirq のドキュメントを参照してください",
       "量子回路の基本的なパターンを思い出してください",
