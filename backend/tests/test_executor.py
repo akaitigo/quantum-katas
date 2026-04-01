@@ -7,6 +7,7 @@ from quantum_katas.services.executor import (
     execute_code,
     validate_imports,
     validate_no_dunder_access,
+    validate_no_ffi_access,
 )
 
 
@@ -127,6 +128,97 @@ class TestValidateDunderAccess:
         assert result is None
 
 
+class TestValidateFFIAccess:
+    """Tests for FFI/native-code access validation (sandbox bypass prevention)."""
+
+    def test_ctypeslib_attribute_blocked(self):
+        """numpy.ctypeslib access must be blocked."""
+        result = validate_no_ffi_access("import numpy\nnumpy.ctypeslib")
+        assert result is not None
+        assert "ctypeslib" in result
+
+    def test_ctypes_attribute_blocked(self):
+        """ctypes attribute access via any chain must be blocked."""
+        result = validate_no_ffi_access("x.ctypes.CDLL(None)")
+        assert result is not None
+        assert "ffi" in result.lower()
+
+    def test_cdll_attribute_blocked(self):
+        """CDLL attribute access must be blocked."""
+        result = validate_no_ffi_access("x.CDLL(None)")
+        assert result is not None
+        assert "CDLL" in result
+
+    def test_cdll_lowercase_blocked(self):
+        """cdll attribute access must be blocked."""
+        result = validate_no_ffi_access("x.cdll.LoadLibrary('libc.so.6')")
+        assert result is not None
+        assert "cdll" in result
+
+    def test_windll_blocked(self):
+        result = validate_no_ffi_access("x.windll")
+        assert result is not None
+        assert "windll" in result
+
+    def test_oledll_blocked(self):
+        result = validate_no_ffi_access("x.oledll")
+        assert result is not None
+        assert "oledll" in result
+
+    def test_pydll_blocked(self):
+        result = validate_no_ffi_access("x.PyDLL('libc.so.6')")
+        assert result is not None
+        assert "PyDLL" in result
+
+    def test_cffi_attribute_blocked(self):
+        result = validate_no_ffi_access("x.cffi.FFI()")
+        assert result is not None
+        assert "ffi" in result.lower()
+
+    def test_ffi_class_blocked(self):
+        result = validate_no_ffi_access("f = x.FFI()")
+        assert result is not None
+        assert "FFI" in result
+
+    def test_dlopen_blocked(self):
+        result = validate_no_ffi_access("x.dlopen('libc.so.6')")
+        assert result is not None
+        assert "dlopen" in result
+
+    def test_full_ctypeslib_chain_blocked(self):
+        """The full numpy.ctypeslib.ctypes.CDLL(None).system() chain must be blocked."""
+        code = "import numpy\nnumpy.ctypeslib.ctypes.CDLL(None).system('id')"
+        result = validate_no_ffi_access(code)
+        assert result is not None
+
+    def test_string_based_ctypes_access_blocked(self):
+        """String-based attribute lookup for ctypes must be blocked."""
+        result = validate_no_ffi_access("x['ctypes']")
+        assert result is not None
+
+    def test_string_based_cdll_access_blocked(self):
+        """String-based attribute lookup for CDLL must be blocked."""
+        result = validate_no_ffi_access("x['CDLL']")
+        assert result is not None
+
+    def test_safe_code_passes(self):
+        """Normal code with no FFI access should pass."""
+        result = validate_no_ffi_access("x = 1 + 2\nprint(x)")
+        assert result is None
+
+    def test_cirq_code_passes(self):
+        """Cirq quantum circuit code should pass."""
+        code = "import cirq\nq = cirq.LineQubit(0)\ncircuit = cirq.Circuit([cirq.H(q)])"
+        result = validate_no_ffi_access(code)
+        assert result is None
+
+    def test_numpy_safe_operations_pass(self):
+        """Normal numpy operations (array, linalg) should pass."""
+        code = "import numpy as np\narr = np.array([1, 2, 3])\nprint(np.linalg.norm(arr))"
+        result = validate_no_ffi_access(code)
+        assert result is None
+
+
 class TestExecuteCode:
     """Tests for code execution."""
 
@@ -225,6 +317,31 @@ print(result)
 
     def test_wrap_close_escape_blocked(self):
         result = execute_code("x = ''.__class__.__mro__[1].__subclasses__()")
+        assert result.success is False
+        assert "blocked" in (result.error or "").lower()
+
+    def test_ctypeslib_bypass_blocked(self):
+        """P0 security: numpy.ctypeslib.ctypes.CDLL(None).system() must be blocked."""
+        code = "import numpy\nnumpy.ctypeslib.ctypes.CDLL(None).system('id')"
+        result = execute_code(code)
+        assert result.success is False
+        assert "blocked" in (result.error or "").lower()
+        assert "ffi" in (result.error or "").lower() or "ctypeslib" in (result.error or "").lower()
+
+    def test_ctypes_import_blocked(self):
+        """Direct ctypes import must be blocked."""
+        result = execute_code("import ctypes")
+        assert result.success is False
+
+    def test_cffi_import_blocked(self):
+        """Direct cffi import must be blocked."""
+        result = execute_code("import cffi")
+        assert result.success is False
+
+    def test_cdll_via_attribute_chain_blocked(self):
+        """CDLL access via any attribute chain must be blocked."""
+        code = "import numpy as np\nnp.ctypeslib.ctypes.CDLL(None)"
+        result = execute_code(code)
         assert result.success is False
         assert "blocked" in (result.error or "").lower()
 
