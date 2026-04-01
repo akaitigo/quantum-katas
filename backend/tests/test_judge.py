@@ -159,3 +159,64 @@ class TestSandboxSecurity:
         code = "''.__class__.__mro__"
         result = validate_submission("01-single-qubit", code)
         assert result.passed is False
+
+    @pytest.mark.slow
+    def test_any_redefinition_does_not_bypass_validation(self) -> None:
+        """P1 security: redefining any() must not allow wrong answers to pass.
+
+        Kata 01 validation uses any() to check for measurements.
+        If user redefines any = lambda x: True, a circuit without
+        measurement would incorrectly pass validation.
+        """
+        code = (
+            "any = lambda x: True\n"
+            "all = lambda x: True\n"
+            "import cirq\n"
+            "q = cirq.LineQubit(0)\n"
+            "circuit = cirq.Circuit([cirq.H(q)])\n"  # No measurement
+        )
+        result = validate_submission("01-single-qubit", code)
+        assert result.passed is False, "Redefining any/all must not allow a circuit without measurement to pass"
+
+    @pytest.mark.slow
+    def test_all_redefinition_does_not_bypass_validation(self) -> None:
+        """P1 security: redefining all() must not allow wrong measurements to pass.
+
+        Kata 01 validation uses all(m == 0 for m in measurements) to verify
+        initial state. If user redefines all = lambda x: True, an X-gate
+        circuit (producing all 1s) would incorrectly pass.
+        """
+        code = (
+            "all = lambda x: True\n"
+            "import cirq\n"
+            "q = cirq.LineQubit(0)\n"
+            "circuit = cirq.Circuit([cirq.X(q), cirq.measure(q, key='result')])\n"
+            "sim = cirq.Simulator()\n"
+            "result = sim.run(circuit, repetitions=10)\n"
+        )
+        result = validate_submission("01-single-qubit", code)
+        assert result.passed is False, "Redefining all() must not allow wrong measurement results to pass"
+
+    @pytest.mark.slow
+    def test_print_redefinition_does_not_forge_passed(self) -> None:
+        """P1 security: redefining print() must not forge 'PASSED' output.
+
+        Judge checks for 'PASSED' in stdout. If user redefines print to
+        always output 'PASSED', it should not bypass actual validation.
+        """
+        code = "import builtins as _b\n"
+        # import builtins is blocked, so this should fail at validation
+        result = validate_submission("01-single-qubit", code)
+        assert result.passed is False
+
+    @pytest.mark.slow
+    def test_print_shadow_does_not_forge_passed(self) -> None:
+        """P1 security: shadowing print in namespace must not forge PASSED output."""
+        code = (
+            "def print(*args, **kwargs): pass\n"
+            "import cirq\n"
+            "q = cirq.LineQubit(0)\n"
+            "circuit = cirq.Circuit([cirq.H(q)])\n"  # Wrong answer, no measurement
+        )
+        result = validate_submission("01-single-qubit", code)
+        assert result.passed is False, "Shadowing print must not prevent validation from detecting wrong answers"

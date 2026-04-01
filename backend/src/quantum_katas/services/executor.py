@@ -306,8 +306,23 @@ def _build_judge_wrapper_code() -> str:
         # Execute user code — variables are stored in _ns
         exec(compile(_user_code, "<user_code>", "exec"), _ns)
 
-        # Execute validation code in the SAME namespace
-        exec(compile(_val_code, "<validation_code>", "exec"), _ns)
+        # Restore builtins before running validation code to prevent
+        # grading result forgery via builtin redefinition (e.g. any/all/print).
+        # User code may have injected fake any/all into _ns to make
+        # validation assertions pass with wrong answers.
+        _pristine_builtins = {{k: v for k, v in vars(_builtins).items() if k not in _blocked}}
+        _pristine_builtins["__import__"] = _safe_import
+
+        # Remove any user-defined shadowing of builtin names from _ns
+        for _bname in vars(_builtins):
+            if _bname in _ns and _bname != "__builtins__":
+                del _ns[_bname]
+
+        # Execute validation code with pristine builtins in an isolated dict
+        # that can still READ user-defined variables (circuit, q, etc.)
+        _val_ns = dict(_ns)
+        _val_ns["__builtins__"] = _pristine_builtins
+        exec(compile(_val_code, "<validation_code>", "exec"), _val_ns)
     """)
 
 
