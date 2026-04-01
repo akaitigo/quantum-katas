@@ -84,6 +84,31 @@ _BLOCKED_DUNDER_ATTRS: frozenset[str] = frozenset(
     }
 )
 
+# FFI-related attribute names that enable sandbox escape via native code loading.
+# Blocks paths like numpy.ctypeslib.ctypes.CDLL(None).system()
+_BLOCKED_FFI_ATTRS: frozenset[str] = frozenset(
+    {
+        # ctypes module access via attribute chains
+        "ctypeslib",
+        "ctypes",
+        # ctypes shared-library loaders
+        "CDLL",
+        "cdll",
+        "windll",
+        "oledll",
+        "WinDLL",
+        "OleDLL",
+        "PyDLL",
+        "pydll",
+        # cffi
+        "cffi",
+        "FFI",
+        # dl / low-level dynamic loading
+        "dlopen",
+        "dlsym",
+    }
+)
+
 # M-2: Semaphore to limit concurrent subprocess executions
 _execution_semaphore = threading.Semaphore(3)
 
@@ -142,6 +167,37 @@ def validate_no_dunder_access(code: str) -> str | None:
         # Catch string-based attribute access via bracket notation (obj['__globals__'])
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in _BLOCKED_DUNDER_ATTRS:
             return f"Access blocked: reference to '{node.value}' is not allowed"
+
+    return None
+
+
+def validate_no_ffi_access(code: str) -> str | None:
+    """Check for FFI-related attribute access that could bypass the sandbox.
+
+    Blocks attack vectors such as:
+        numpy.ctypeslib.ctypes.CDLL(None).system('id')
+        numpy.ctypeslib.ctypes.cdll.LoadLibrary(None)
+
+    These allow loading arbitrary native code or invoking OS commands
+    even when ctypes/cffi import statements are blocked.
+
+    Returns an error message if a blocked access is found, or None if safe.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+
+    for node in ast.walk(tree):
+        # Attribute access: obj.ctypes, obj.CDLL, etc.
+        if isinstance(node, ast.Attribute) and node.attr in _BLOCKED_FFI_ATTRS:
+            return f"Access blocked: '{node.attr}' — FFI/native code access is not allowed"
+        # String-based access: obj['ctypes'], obj['CDLL'], etc.
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in _BLOCKED_FFI_ATTRS:
+            return f"Access blocked: reference to '{node.value}' — FFI/native code access is not allowed"
+        # Direct function calls: CDLL(...), cdll(...), etc.
+        if isinstance(node, ast.Name) and node.id in _BLOCKED_FFI_ATTRS:
+            return f"Access blocked: '{node.id}' — FFI/native code access is not allowed"
 
     return None
 
@@ -264,7 +320,11 @@ def _validate_user_code(code: str) -> str | None:
     if import_error is not None:
         return import_error
 
-    return validate_no_dunder_access(code)
+    dunder_error = validate_no_dunder_access(code)
+    if dunder_error is not None:
+        return dunder_error
+
+    return validate_no_ffi_access(code)
 
 
 def _sandbox_env() -> dict[str, str]:
