@@ -5,6 +5,7 @@ import pytest
 from quantum_katas.services.executor import (
     ALLOWED_MODULES,
     execute_code,
+    execute_judge,
     validate_imports,
     validate_no_dunder_access,
     validate_no_ffi_access,
@@ -344,6 +345,57 @@ print(result)
         result = execute_code(code)
         assert result.success is False
         assert "blocked" in (result.error or "").lower()
+
+
+class TestJudgeBuiltinIsolation:
+    """Tests for builtin isolation between user code and validation code.
+
+    Ensures that user-defined shadowing of builtins (any, all, print, etc.)
+    does not affect validation code execution.
+    """
+
+    def test_any_restored_for_validation(self):
+        """User redefining any() must not affect validation code."""
+        user_code = "any = lambda x: True\nx = 42"
+        val_code = "assert any([False]) is False, 'any() was not restored'"
+        result = execute_judge(user_code, val_code)
+        assert result.success is True, f"Validation should use real any(): {result.error}"
+
+    def test_all_restored_for_validation(self):
+        """User redefining all() must not affect validation code."""
+        user_code = "all = lambda x: True\nx = 42"
+        val_code = "assert all([False]) is False, 'all() was not restored'"
+        result = execute_judge(user_code, val_code)
+        assert result.success is True, f"Validation should use real all(): {result.error}"
+
+    def test_print_restored_for_validation(self):
+        """User redefining print() must not affect validation code output."""
+        user_code = "def print(*a, **k): pass\nx = 42"
+        val_code = "print('PASSED')"
+        result = execute_judge(user_code, val_code)
+        assert result.success is True
+        assert "PASSED" in result.stdout, "Validation print() should produce output"
+
+    def test_user_variables_accessible_in_validation(self):
+        """User-defined variables (non-builtin) must still be accessible."""
+        user_code = "my_value = 42\nmy_list = [1, 2, 3]"
+        val_code = "assert my_value == 42\nassert len(my_list) == 3\nprint('PASSED')"
+        result = execute_judge(user_code, val_code)
+        assert result.success is True
+        assert "PASSED" in result.stdout
+
+    def test_multiple_builtins_restored(self):
+        """Multiple builtin overrides should all be restored."""
+        user_code = "any = lambda x: True\nall = lambda x: True\nlen = lambda x: 999\nsum = lambda x: 0\nx = 42\n"
+        val_code = (
+            "assert any([False]) is False\n"
+            "assert all([False]) is False\n"
+            "assert len([1,2,3]) == 3\n"
+            "assert sum([1,2,3]) == 6\n"
+            "print('PASSED')\n"
+        )
+        result = execute_judge(user_code, val_code)
+        assert result.success is True, f"All builtins should be restored: {result.error}"
 
 
 class TestExecuteEndpoint:
