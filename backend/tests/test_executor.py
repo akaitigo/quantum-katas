@@ -4,11 +4,13 @@ import pytest
 
 from quantum_katas.services.executor import (
     ALLOWED_MODULES,
+    MAX_CODE_LENGTH,
     execute_code,
     execute_judge,
     validate_imports,
     validate_no_dunder_access,
     validate_no_ffi_access,
+    validate_no_file_io_access,
 )
 
 
@@ -220,6 +222,90 @@ class TestValidateFFIAccess:
         assert result is None
 
 
+class TestValidateFileIOAccess:
+    """Tests for file I/O attribute access validation (numpy genfromtxt etc.)."""
+
+    def test_genfromtxt_blocked(self):
+        """numpy.genfromtxt() must be blocked."""
+        result = validate_no_file_io_access("import numpy\nnumpy.genfromtxt('/etc/hosts')")
+        assert result is not None
+        assert "genfromtxt" in result
+
+    def test_loadtxt_blocked(self):
+        result = validate_no_file_io_access("import numpy as np\nnp.loadtxt('/etc/passwd')")
+        assert result is not None
+        assert "loadtxt" in result
+
+    def test_savetxt_blocked(self):
+        result = validate_no_file_io_access("import numpy as np\nnp.savetxt('/tmp/out.txt', [1])")
+        assert result is not None
+        assert "savetxt" in result
+
+    def test_load_blocked(self):
+        result = validate_no_file_io_access("import numpy as np\nnp.load('/tmp/data.npy')")
+        assert result is not None
+        assert "load" in result
+
+    def test_save_blocked(self):
+        result = validate_no_file_io_access("import numpy as np\nnp.save('/tmp/data.npy', [1])")
+        assert result is not None
+        assert "save" in result
+
+    def test_savez_blocked(self):
+        result = validate_no_file_io_access("import numpy as np\nnp.savez('/tmp/data.npz', a=[1])")
+        assert result is not None
+        assert "savez" in result
+
+    def test_savez_compressed_blocked(self):
+        result = validate_no_file_io_access("import numpy as np\nnp.savez_compressed('/tmp/d.npz', a=[1])")
+        assert result is not None
+        assert "savez_compressed" in result
+
+    def test_fromfile_blocked(self):
+        result = validate_no_file_io_access("import numpy as np\nnp.fromfile('/etc/shadow')")
+        assert result is not None
+        assert "fromfile" in result
+
+    def test_tofile_blocked(self):
+        result = validate_no_file_io_access("import numpy as np\narr = np.array([1])\narr.tofile('/tmp/out')")
+        assert result is not None
+        assert "tofile" in result
+
+    def test_path_attribute_blocked(self):
+        """pathlib.Path access via attribute chain must be blocked."""
+        result = validate_no_file_io_access("x.Path('/etc/hosts')")
+        assert result is not None
+        assert "Path" in result
+
+    def test_pathlib_attribute_blocked(self):
+        result = validate_no_file_io_access("x.pathlib.Path('/')")
+        assert result is not None
+        assert "file i/o" in result.lower()
+
+    def test_path_direct_name_blocked(self):
+        """Direct Path() name usage must be blocked."""
+        result = validate_no_file_io_access("Path('/etc/hosts').read_text()")
+        assert result is not None
+        assert "Path" in result
+
+    def test_string_based_genfromtxt_blocked(self):
+        """String-based attribute lookup for genfromtxt must be blocked."""
+        result = validate_no_file_io_access("np['genfromtxt']('/etc/hosts')")
+        assert result is not None
+        assert "genfromtxt" in result
+
+    def test_safe_numpy_operations_pass(self):
+        """Normal numpy operations should pass."""
+        code = "import numpy as np\narr = np.array([1, 2, 3])\nprint(np.sum(arr))"
+        result = validate_no_file_io_access(code)
+        assert result is None
+
+    def test_safe_cirq_code_passes(self):
+        code = "import cirq\nq = cirq.LineQubit(0)\ncircuit = cirq.Circuit([cirq.H(q)])"
+        result = validate_no_file_io_access(code)
+        assert result is None
+
+
 class TestExecuteCode:
     """Tests for code execution."""
 
@@ -346,6 +432,46 @@ print(result)
         assert result.success is False
         assert "blocked" in (result.error or "").lower()
 
+    def test_numpy_genfromtxt_blocked(self):
+        """P0 security: numpy.genfromtxt() file read must be blocked."""
+        code = "import numpy\nnumpy.genfromtxt('/etc/hosts')"
+        result = execute_code(code)
+        assert result.success is False
+        assert "blocked" in (result.error or "").lower()
+        assert "file i/o" in (result.error or "").lower() or "genfromtxt" in (result.error or "").lower()
+
+    def test_numpy_loadtxt_blocked(self):
+        """P0 security: numpy.loadtxt() file read must be blocked."""
+        code = "import numpy as np\nnp.loadtxt('/etc/passwd')"
+        result = execute_code(code)
+        assert result.success is False
+
+    def test_numpy_fromfile_blocked(self):
+        """P0 security: numpy.fromfile() file read must be blocked."""
+        code = "import numpy as np\nnp.fromfile('/etc/shadow')"
+        result = execute_code(code)
+        assert result.success is False
+
+    def test_pathlib_path_blocked(self):
+        """P0 security: pathlib.Path attribute chain must be blocked."""
+        code = "import numpy as np\nnp.Path('/etc/hosts')"
+        result = execute_code(code)
+        assert result.success is False
+
+    def test_code_too_long_rejected(self):
+        """P1: Code exceeding MAX_CODE_LENGTH must be rejected."""
+        code = "x = 1\n" * (MAX_CODE_LENGTH + 1)
+        result = execute_code(code)
+        assert result.success is False
+        assert "too long" in (result.error or "").lower()
+
+    def test_judge_code_too_long_rejected(self):
+        """P1: User code exceeding MAX_CODE_LENGTH must be rejected in judge."""
+        code = "x = 1\n" * (MAX_CODE_LENGTH + 1)
+        result = execute_judge(code, "pass")
+        assert result.success is False
+        assert "too long" in (result.error or "").lower()
+
 
 class TestJudgeBuiltinIsolation:
     """Tests for builtin isolation between user code and validation code.
@@ -433,3 +559,22 @@ class TestExecuteEndpoint:
         data = response.json()
         assert data["success"] is False
         assert "blocked" in data["error"].lower()
+
+    def test_execute_numpy_genfromtxt_blocked(self, client):
+        """P0 via API: numpy.genfromtxt() file read must be blocked."""
+        response = client.post(
+            "/api/execute",
+            json={"code": "import numpy\nnumpy.genfromtxt('/etc/hosts')"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "blocked" in data["error"].lower()
+
+    def test_execute_code_too_long(self, client):
+        """P1 via API: code exceeding max_length must be rejected at validation."""
+        response = client.post(
+            "/api/execute",
+            json={"code": "x" * 10_001},
+        )
+        assert response.status_code == 422

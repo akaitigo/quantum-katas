@@ -29,6 +29,10 @@ EXECUTION_TIMEOUT_SECONDS = 15
 
 MAX_CODE_LENGTH = 10_000
 
+# Maximum output size in bytes (1 MB) — prevents memory exhaustion from
+# runaway print loops or crafted large-output payloads.
+MAX_OUTPUT_BYTES = 1_024 * 1_024
+
 ALLOWED_MODULES: frozenset[str] = frozenset(
     {
         "cirq",
@@ -106,6 +110,29 @@ _BLOCKED_FFI_ATTRS: frozenset[str] = frozenset(
         # dl / low-level dynamic loading
         "dlopen",
         "dlsym",
+    }
+)
+
+# Numpy file I/O functions that can read/write the filesystem.
+# These bypass the blocked `open` builtin by using C-level file access.
+_BLOCKED_FILE_IO_ATTRS: frozenset[str] = frozenset(
+    {
+        # numpy file I/O
+        "genfromtxt",
+        "loadtxt",
+        "savetxt",
+        "load",
+        "save",
+        "savez",
+        "savez_compressed",
+        "fromfile",
+        "tofile",
+        # pathlib access via attribute chains
+        "Path",
+        "pathlib",
+        "PurePath",
+        "PosixPath",
+        "WindowsPath",
     }
 )
 
@@ -198,6 +225,36 @@ def validate_no_ffi_access(code: str) -> str | None:
         # Direct function calls: CDLL(...), cdll(...), etc.
         if isinstance(node, ast.Name) and node.id in _BLOCKED_FFI_ATTRS:
             return f"Access blocked: '{node.id}' — FFI/native code access is not allowed"
+
+    return None
+
+
+def validate_no_file_io_access(code: str) -> str | None:
+    """Check for file I/O attribute access that bypasses the blocked `open` builtin.
+
+    Blocks attack vectors such as:
+        numpy.genfromtxt('/etc/hosts')
+        numpy.loadtxt('/etc/passwd')
+        numpy.fromfile('/etc/shadow')
+        pathlib.Path('/etc/hosts').read_text()
+
+    Returns an error message if a blocked access is found, or None if safe.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+
+    for node in ast.walk(tree):
+        # Attribute access: obj.genfromtxt, obj.Path, etc.
+        if isinstance(node, ast.Attribute) and node.attr in _BLOCKED_FILE_IO_ATTRS:
+            return f"Access blocked: '{node.attr}' — file I/O access is not allowed"
+        # String-based access: obj['genfromtxt'], obj['Path'], etc.
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in _BLOCKED_FILE_IO_ATTRS:
+            return f"Access blocked: reference to '{node.value}' — file I/O access is not allowed"
+        # Direct name usage: Path(...), genfromtxt(...), etc.
+        if isinstance(node, ast.Name) and node.id in _BLOCKED_FILE_IO_ATTRS:
+            return f"Access blocked: '{node.id}' — file I/O access is not allowed"
 
     return None
 
@@ -339,7 +396,11 @@ def _validate_user_code(code: str) -> str | None:
     if dunder_error is not None:
         return dunder_error
 
-    return validate_no_ffi_access(code)
+    ffi_error = validate_no_ffi_access(code)
+    if ffi_error is not None:
+        return ffi_error
+
+    return validate_no_file_io_access(code)
 
 
 def _sandbox_env() -> dict[str, str]:
@@ -390,18 +451,30 @@ def _run_sandboxed(wrapper_code: str, stdin_data: str) -> ExecutionResult:
     finally:
         _execution_semaphore.release()
 
+    # Truncate oversized output to prevent memory exhaustion
+    stdout = result.stdout
+    stderr = result.stderr
+    truncated = False
+    if len(stdout.encode("utf-8", errors="replace")) > MAX_OUTPUT_BYTES:
+        stdout = stdout[:MAX_OUTPUT_BYTES] + "\n... [output truncated at 1 MB]"
+        truncated = True
+    if len(stderr.encode("utf-8", errors="replace")) > MAX_OUTPUT_BYTES:
+        stderr = stderr[:MAX_OUTPUT_BYTES] + "\n... [output truncated at 1 MB]"
+        truncated = True
+
     if result.returncode != 0:
         return ExecutionResult(
-            stdout=result.stdout,
-            stderr=result.stderr,
+            stdout=stdout,
+            stderr=stderr,
             success=False,
-            error=result.stderr or f"Process exited with code {result.returncode}",
+            error=stderr or f"Process exited with code {result.returncode}",
         )
 
     return ExecutionResult(
-        stdout=result.stdout,
-        stderr=result.stderr,
+        stdout=stdout,
+        stderr=stderr,
         success=True,
+        error="Output was truncated (exceeded 1 MB limit)" if truncated else None,
     )
 
 
@@ -409,14 +482,23 @@ def execute_code(code: str) -> ExecutionResult:
     """Execute user-submitted Python code in a sandboxed subprocess.
 
     Security measures:
-    1. AST-level import validation (whitelist)
-    2. Dunder attribute access validation (object-graph escape prevention)
-    3. Blocked dangerous builtins (open, exec, eval, etc.)
-    4. Subprocess isolation with timeout (15s)
-    5. Memory limit via RLIMIT_AS (512 MB)
-    6. Concurrency limit via semaphore (max 3)
-    7. No shell=True to prevent shell injection
+    1. Code length limit (MAX_CODE_LENGTH)
+    2. AST-level import validation (whitelist)
+    3. Dunder attribute access validation (object-graph escape prevention)
+    4. File I/O access validation (numpy genfromtxt/loadtxt/Path etc.)
+    5. Blocked dangerous builtins (open, exec, eval, etc.)
+    6. Subprocess isolation with timeout (15s)
+    7. Memory limit via RLIMIT_AS (1 GB)
+    8. Concurrency limit via semaphore (max 3)
+    9. No shell=True to prevent shell injection
+    10. Output size limit (MAX_OUTPUT_BYTES)
     """
+    if len(code) > MAX_CODE_LENGTH:
+        return ExecutionResult(
+            success=False,
+            error=f"Code too long: {len(code)} characters (max {MAX_CODE_LENGTH})",
+        )
+
     validation_error = _validate_user_code(code)
     if validation_error is not None:
         return ExecutionResult(
@@ -437,6 +519,12 @@ def execute_judge(user_code: str, validation_code: str) -> ExecutionResult:
     Security: same measures as execute_code, plus validation_code is trusted
     (comes from YAML, not user input) but still sandboxed for defense-in-depth.
     """
+    if len(user_code) > MAX_CODE_LENGTH:
+        return ExecutionResult(
+            success=False,
+            error=f"Code too long: {len(user_code)} characters (max {MAX_CODE_LENGTH})",
+        )
+
     validation_error = _validate_user_code(user_code)
     if validation_error is not None:
         return ExecutionResult(
