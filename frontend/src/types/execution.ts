@@ -1,8 +1,3 @@
-/** Request body for POST /api/execute. */
-export interface ExecutionRequest {
-  readonly code: string;
-}
-
 /** Response body from POST /api/execute. */
 export interface ExecutionResult {
   readonly stdout: string;

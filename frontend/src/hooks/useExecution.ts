@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { executeCode, isMockMode } from "@/lib/api";
+import { executeCode } from "@/lib/api";
 import type { ExecutionResult } from "@/types/execution";
 
 interface UseExecutionReturn {
@@ -44,9 +44,4 @@ export function useExecution(): UseExecutionReturn {
     execute,
     clearResult,
   };
-}
-
-/** Whether the backend is available for code execution. */
-export function canExecute(): boolean {
-  return !isMockMode();
 }
