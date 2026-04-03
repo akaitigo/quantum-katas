@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { KataDetail } from "@/components/KataDetail";
 import { KataList } from "@/components/KataList";
 import { ProgressBar } from "@/components/ProgressBar";
+import { useKataList } from "@/hooks/useKatas";
 import { useProgress } from "@/hooks/useProgress";
 import "./index.css";
 
@@ -17,6 +18,7 @@ const queryClient = new QueryClient({
 
 function AppLayout(): React.JSX.Element {
   const { completedCount } = useProgress();
+  const { katas } = useKataList();
 
   return (
     <div className="app-container">
@@ -26,7 +28,10 @@ function AppLayout(): React.JSX.Element {
             <span>Q</span>uantum Katas
           </h1>
         </Link>
-        <ProgressBar completedCount={completedCount} />
+        <ProgressBar
+          completedCount={completedCount}
+          totalKatas={katas.length}
+        />
       </header>
       <main>
         <Routes>

@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useKataList } from "@/hooks/useKatas";
 import { useProgress } from "@/hooks/useProgress";
 import { isMockMode } from "@/lib/api";
-import { CATEGORY_LABELS, CATEGORY_ORDER, TOTAL_KATAS } from "@/lib/constants";
+import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/constants";
 import type { KataSummary } from "@/types/kata";
 import { ProgressBar } from "./ProgressBar";
 
@@ -95,7 +95,8 @@ export function KataList(): React.JSX.Element {
     }
   }
 
-  const isAllClear = completedCount >= TOTAL_KATAS;
+  const totalKatas = katas.length;
+  const isAllClear = totalKatas > 0 && completedCount >= totalKatas;
 
   return (
     <div>
@@ -106,14 +107,15 @@ export function KataList(): React.JSX.Element {
       )}
 
       <div style={{ marginBottom: "2rem" }}>
-        <ProgressBar completedCount={completedCount} />
+        <ProgressBar completedCount={completedCount} totalKatas={totalKatas} />
       </div>
 
       {isAllClear && (
         <div className="celebration-banner" data-testid="celebration-banner">
           <div className="celebration-title">All Clear!</div>
           <p className="celebration-message">
-            全10カタを制覇しました。量子コンピューティングの基礎をマスターです!
+            全{totalKatas}
+            カタを制覇しました。量子コンピューティングの基礎をマスターです!
           </p>
         </div>
       )}

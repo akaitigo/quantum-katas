@@ -41,6 +41,84 @@ ALLOWED_MODULES: frozenset[str] = frozenset(
     }
 )
 
+# Modules that MUST be blocked regardless of whether they appear in
+# sys.modules (e.g. loaded as transitive dependencies of cirq/numpy).
+# This is the final defence against `__import__('os').popen(...)` attacks.
+_BLOCKED_MODULES: frozenset[str] = frozenset(
+    {
+        "os",
+        "sys",
+        "subprocess",
+        "shutil",
+        "pathlib",
+        "io",
+        "socket",
+        "http",
+        "urllib",
+        "ctypes",
+        "cffi",
+        "signal",
+        "multiprocessing",
+        "threading",
+        "importlib",
+        "code",
+        "codeop",
+        "compileall",
+        "py_compile",
+        "runpy",
+        "asyncio",
+        "concurrent",
+        "selectors",
+        "select",
+        "mmap",
+        "tempfile",
+        "glob",
+        "fnmatch",
+        "fileinput",
+        "filecmp",
+        "zipfile",
+        "tarfile",
+        "gzip",
+        "bz2",
+        "lzma",
+        "zipimport",
+        "pkgutil",
+        "pdb",
+        "profile",
+        "trace",
+        "webbrowser",
+        "antigravity",
+        "turtle",
+        "tkinter",
+        "xmlrpc",
+        "ftplib",
+        "smtplib",
+        "poplib",
+        "imaplib",
+        "telnetlib",
+        "socketserver",
+        "ssl",
+        "resource",
+        "pty",
+        "fcntl",
+        "termios",
+        "readline",
+        "rlcompleter",
+        "posix",
+        "posixpath",
+        "nt",
+        "ntpath",
+        "win32api",
+        "win32com",
+        "msvcrt",
+        "_thread",
+        "_io",
+        "_socket",
+        "_ssl",
+        "_subprocess",
+    }
+)
+
 _BLOCKED_BUILTINS: frozenset[str] = frozenset(
     {
         "open",
@@ -173,12 +251,24 @@ def validate_imports(code: str) -> str | None:
     return None
 
 
+def _is_subscript_key(tree: ast.AST, target: ast.AST) -> bool:
+    """Return True if *target* is used as a subscript slice (e.g. obj['key']).
+
+    This distinguishes ``obj['__globals__']`` (dangerous) from
+    ``x = '__globals__'`` (benign string literal).
+    """
+    return any(isinstance(node, ast.Subscript) and node.slice is target for node in ast.walk(tree))
+
+
 def validate_no_dunder_access(code: str) -> str | None:
     """Check for blocked dunder attribute access in user code.
 
     Prevents object-graph traversal attacks such as:
         ().__class__.__bases__[0].__subclasses__()
         os._wrap_close.__init__.__globals__['sys']
+
+    String literals are only flagged when used as subscript keys
+    (``obj['__globals__']``), not as plain values (``x = '__globals__'``).
 
     Returns an error message if a blocked access is found, or None if safe.
     """
@@ -192,7 +282,13 @@ def validate_no_dunder_access(code: str) -> str | None:
         if isinstance(node, ast.Attribute) and node.attr in _BLOCKED_DUNDER_ATTRS:
             return f"Access blocked: '{node.attr}' attribute access is not allowed"
         # Catch string-based attribute access via bracket notation (obj['__globals__'])
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in _BLOCKED_DUNDER_ATTRS:
+        # but NOT plain string literals like x = '__globals__'
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in _BLOCKED_DUNDER_ATTRS
+            and _is_subscript_key(tree, node)
+        ):
             return f"Access blocked: reference to '{node.value}' is not allowed"
 
     return None
@@ -208,6 +304,9 @@ def validate_no_ffi_access(code: str) -> str | None:
     These allow loading arbitrary native code or invoking OS commands
     even when ctypes/cffi import statements are blocked.
 
+    String literals are only flagged when used as subscript keys
+    (``obj['CDLL']``), not as plain values (``x = 'ctypes'``).
+
     Returns an error message if a blocked access is found, or None if safe.
     """
     try:
@@ -220,7 +319,13 @@ def validate_no_ffi_access(code: str) -> str | None:
         if isinstance(node, ast.Attribute) and node.attr in _BLOCKED_FFI_ATTRS:
             return f"Access blocked: '{node.attr}' — FFI/native code access is not allowed"
         # String-based access: obj['ctypes'], obj['CDLL'], etc.
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in _BLOCKED_FFI_ATTRS:
+        # Only when used as a subscript key, not as a plain string literal.
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in _BLOCKED_FFI_ATTRS
+            and _is_subscript_key(tree, node)
+        ):
             return f"Access blocked: reference to '{node.value}' — FFI/native code access is not allowed"
         # Direct function calls: CDLL(...), cdll(...), etc.
         if isinstance(node, ast.Name) and node.id in _BLOCKED_FFI_ATTRS:
@@ -238,6 +343,9 @@ def validate_no_file_io_access(code: str) -> str | None:
         numpy.fromfile('/etc/shadow')
         pathlib.Path('/etc/hosts').read_text()
 
+    String literals are only flagged when used as subscript keys
+    (``np['genfromtxt']``), not as plain values (``x = 'pathlib'``).
+
     Returns an error message if a blocked access is found, or None if safe.
     """
     try:
@@ -250,7 +358,13 @@ def validate_no_file_io_access(code: str) -> str | None:
         if isinstance(node, ast.Attribute) and node.attr in _BLOCKED_FILE_IO_ATTRS:
             return f"Access blocked: '{node.attr}' — file I/O access is not allowed"
         # String-based access: obj['genfromtxt'], obj['Path'], etc.
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in _BLOCKED_FILE_IO_ATTRS:
+        # Only when used as a subscript key, not as a plain string literal.
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in _BLOCKED_FILE_IO_ATTRS
+            and _is_subscript_key(tree, node)
+        ):
             return f"Access blocked: reference to '{node.value}' — file I/O access is not allowed"
         # Direct name usage: Path(...), genfromtxt(...), etc.
         if isinstance(node, ast.Name) and node.id in _BLOCKED_FILE_IO_ATTRS:
@@ -267,9 +381,17 @@ def _build_wrapper_code() -> str:
     builtins dict with a guarded ``__import__`` that only allows whitelisted
     top-level modules. Also sets RLIMIT_AS and RLIMIT_NPROC limits.
 
+    The ``_safe_import`` function enforces two rules:
+    1. **Block-list first**: modules in ``_BLOCKED_MODULES`` are ALWAYS refused,
+       even if they are already in ``sys.modules`` (loaded as transitive deps).
+    2. **Allow-list second**: only modules whose root package is in
+       ``_ALLOWED_MODULES`` (or already loaded as a transitive dep and NOT
+       blocked) are permitted.
+
     User code is read from stdin to avoid string-escaping injection (C-2).
     """
     allowed_repr = repr(set(ALLOWED_MODULES))
+    blocked_mods_repr = repr(set(_BLOCKED_MODULES))
 
     return textwrap.dedent(f"""\
         import resource as _resource
@@ -293,16 +415,21 @@ def _build_wrapper_code() -> str:
         _safe_builtins = {{k: v for k, v in vars(_builtins).items() if k not in _blocked}}
 
         _allowed_modules = {allowed_repr}
+        _blocked_modules = {blocked_mods_repr}
         _real_import = _builtins.__import__
 
         def _safe_import(name, *args, **kwargs):
-            # Allow already-loaded modules (transitive deps of cirq/numpy/math)
-            if name in _sys.modules or name in _pre_modules:
-                return _real_import(name, *args, **kwargs)
             root = name.split(".")[0]
-            if root not in _allowed_modules:
+            # Rule 1: ALWAYS block dangerous modules, even if pre-loaded
+            if root in _blocked_modules:
                 raise ImportError(f"Import not allowed: {{name}}")
-            return _real_import(name, *args, **kwargs)
+            # Rule 2: Allow whitelisted modules
+            if root in _allowed_modules:
+                return _real_import(name, *args, **kwargs)
+            # Rule 3: Allow transitive deps already loaded (but not blocked)
+            if name in _pre_modules or name in _sys.modules:
+                return _real_import(name, *args, **kwargs)
+            raise ImportError(f"Import not allowed: {{name}}")
 
         _safe_builtins["__import__"] = _safe_import
 
@@ -318,8 +445,12 @@ def _build_judge_wrapper_code() -> str:
     Also sets RLIMIT_AS and RLIMIT_NPROC limits.
 
     Both code blocks are read from stdin (NUL-separated) to avoid injection (C-2).
+
+    Uses the same block-list-first / allow-list-second ``_safe_import``
+    strategy as ``_build_wrapper_code``.
     """
     allowed_repr = repr(set(ALLOWED_MODULES))
+    blocked_mods_repr = repr(set(_BLOCKED_MODULES))
 
     return textwrap.dedent(f"""\
         import resource as _resource
@@ -345,16 +476,21 @@ def _build_judge_wrapper_code() -> str:
         _safe_builtins = {{k: v for k, v in vars(_builtins).items() if k not in _blocked}}
 
         _allowed_modules = {allowed_repr}
+        _blocked_modules = {blocked_mods_repr}
         _real_import = _builtins.__import__
 
         def _safe_import(name, *args, **kwargs):
-            # Allow already-loaded modules (transitive deps of cirq/numpy/math)
-            if name in _sys.modules or name in _pre_modules:
-                return _real_import(name, *args, **kwargs)
             root = name.split(".")[0]
-            if root not in _allowed_modules:
+            # Rule 1: ALWAYS block dangerous modules, even if pre-loaded
+            if root in _blocked_modules:
                 raise ImportError(f"Import not allowed: {{name}}")
-            return _real_import(name, *args, **kwargs)
+            # Rule 2: Allow whitelisted modules
+            if root in _allowed_modules:
+                return _real_import(name, *args, **kwargs)
+            # Rule 3: Allow transitive deps already loaded (but not blocked)
+            if name in _pre_modules or name in _sys.modules:
+                return _real_import(name, *args, **kwargs)
+            raise ImportError(f"Import not allowed: {{name}}")
 
         _safe_builtins["__import__"] = _safe_import
 

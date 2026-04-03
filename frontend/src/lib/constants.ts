@@ -15,8 +15,5 @@ export const CATEGORY_ORDER: readonly string[] = [
   "algorithms",
 ];
 
-/** Total number of katas in the curriculum. */
-export const TOTAL_KATAS = 10;
-
 /** Key used for localStorage progress storage. */
 export const PROGRESS_STORAGE_KEY = "quantum-katas-progress";

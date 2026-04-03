@@ -7,15 +7,20 @@ import { useExecution } from "@/hooks/useExecution";
 import { useKataDetail, useKataList } from "@/hooks/useKatas";
 import { useProgress } from "@/hooks/useProgress";
 import { isMockMode, validateKata } from "@/lib/api";
-import { CATEGORY_LABELS, TOTAL_KATAS } from "@/lib/constants";
+import { CATEGORY_LABELS } from "@/lib/constants";
 import type { ValidateResponse } from "@/types/kata";
 
-function CelebrationBanner(): React.JSX.Element {
+function CelebrationBanner({
+  totalKatas,
+}: {
+  readonly totalKatas: number;
+}): React.JSX.Element {
   return (
     <div className="celebration-banner" data-testid="celebration-banner">
       <div className="celebration-title">All Clear!</div>
       <p className="celebration-message">
-        全10カタを制覇しました。量子コンピューティングの基礎をマスターです!
+        全{totalKatas}
+        カタを制覇しました。量子コンピューティングの基礎をマスターです!
       </p>
     </div>
   );
@@ -130,7 +135,8 @@ export function KataDetail(): React.JSX.Element {
 
   // Initialize code from template on first render for this kata
   const displayedCode = code ?? kata.template_code;
-  const isAllClear = completedCount >= TOTAL_KATAS;
+  const totalKatas = katas.length;
+  const isAllClear = totalKatas > 0 && completedCount >= totalKatas;
 
   return (
     <div className="kata-detail">
@@ -233,7 +239,9 @@ export function KataDetail(): React.JSX.Element {
 
       <HintPanel kataId={kata.id} hints={kata.hints} />
 
-      {validationResult?.passed && isAllClear && <CelebrationBanner />}
+      {validationResult?.passed && isAllClear && (
+        <CelebrationBanner totalKatas={totalKatas} />
+      )}
 
       {validationResult?.passed && nextKata && (
         <div className="next-kata-prompt">
