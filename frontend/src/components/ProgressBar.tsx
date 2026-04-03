@@ -1,13 +1,14 @@
-import { TOTAL_KATAS } from "@/lib/constants";
-
 interface ProgressBarProps {
   readonly completedCount: number;
+  readonly totalKatas: number;
 }
 
 export function ProgressBar({
   completedCount,
+  totalKatas,
 }: ProgressBarProps): React.JSX.Element {
-  const percent = Math.round((completedCount / TOTAL_KATAS) * 100);
+  const percent =
+    totalKatas > 0 ? Math.round((completedCount / totalKatas) * 100) : 0;
 
   return (
     <div className="progress-bar-container">
@@ -25,7 +26,7 @@ export function ProgressBar({
         />
       </div>
       <span className="progress-text">
-        {completedCount}/{TOTAL_KATAS} 完了
+        {completedCount}/{totalKatas} 完了
       </span>
     </div>
   );

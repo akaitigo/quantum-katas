@@ -473,6 +473,114 @@ print(result)
         assert "too long" in (result.error or "").lower()
 
 
+class TestBlockedModulesRuntime:
+    """Tests for _BLOCKED_MODULES enforcement at runtime.
+
+    These verify the fundamental sandbox redesign: even if os/sys/etc. are in
+    sys.modules (pre-loaded by cirq/numpy), __import__('os') must be blocked.
+    """
+
+    @pytest.mark.slow
+    def test_dunder_import_os_popen_blocked(self):
+        """P0: __import__('os').popen('id') must be blocked at runtime."""
+        code = "result = __import__('os').popen('id').read()\nprint(result)"
+        result = execute_code(code)
+        assert result.success is False
+        # Should be caught by AST import check OR by the __import__ builtin being blocked
+        assert "not allowed" in (result.error or "").lower() or "blocked" in (result.error or "").lower()
+
+    @pytest.mark.slow
+    def test_dunder_import_sys_modules_os_blocked(self):
+        """P0: __import__('sys').modules['os'] must be blocked at runtime."""
+        code = "s = __import__('sys')\nos = s.modules['os']\nprint(os.listdir('.'))"
+        result = execute_code(code)
+        assert result.success is False
+        assert "not allowed" in (result.error or "").lower() or "blocked" in (result.error or "").lower()
+
+    @pytest.mark.slow
+    def test_import_os_statement_blocked(self):
+        """P0: plain 'import os' must be blocked."""
+        result = execute_code("import os\nprint(os.listdir('.'))")
+        assert result.success is False
+        assert "not allowed" in (result.error or "").lower()
+
+    @pytest.mark.slow
+    def test_import_subprocess_blocked(self):
+        """P0: 'import subprocess' must be blocked."""
+        result = execute_code("import subprocess\nsubprocess.run(['id'])")
+        assert result.success is False
+        assert "not allowed" in (result.error or "").lower()
+
+    @pytest.mark.slow
+    def test_import_socket_blocked(self):
+        """P0: 'import socket' must be blocked."""
+        result = execute_code("import socket\nsocket.socket()")
+        assert result.success is False
+
+    @pytest.mark.slow
+    def test_allowed_imports_still_work(self):
+        """Sanity: numpy, cirq, math must still import successfully."""
+        code = "import numpy\nimport math\nprint(numpy.array([1,2,3]))\nprint(math.pi)"
+        result = execute_code(code)
+        assert result.success is True
+        assert "3.14" in result.stdout
+
+    @pytest.mark.slow
+    def test_judge_dunder_import_os_blocked(self):
+        """P0: __import__('os') must be blocked in judge mode too."""
+        user_code = "result = __import__('os').popen('id').read()"
+        val_code = "print('should not reach here')"
+        result = execute_judge(user_code, val_code)
+        assert result.success is False
+        assert "not allowed" in (result.error or "").lower() or "blocked" in (result.error or "").lower()
+
+
+class TestStringLiteralFalsePositives:
+    """Tests that string literals containing blocked names are NOT flagged.
+
+    Plain strings like x = 'pathlib' or x = 'os' should be allowed.
+    Only subscript access like obj['os'] should be blocked.
+    """
+
+    def test_string_literal_pathlib_allowed(self):
+        """P3: 'pathlib' as a plain string literal must not be blocked."""
+        result = validate_no_file_io_access("x = 'pathlib'\nprint(x)")
+        assert result is None
+
+    def test_string_literal_ctypes_allowed(self):
+        """P3: 'ctypes' as a plain string literal must not be blocked."""
+        result = validate_no_ffi_access("x = 'ctypes'\nprint(x)")
+        assert result is None
+
+    def test_string_literal_globals_allowed(self):
+        """P3: '__globals__' as a plain string literal must not be blocked."""
+        result = validate_no_dunder_access("x = '__globals__'\nprint(x)")
+        assert result is None
+
+    def test_string_literal_path_class_allowed(self):
+        """P3: 'Path' as a plain string literal must not be blocked."""
+        result = validate_no_file_io_access("name = 'Path'\nprint(name)")
+        assert result is None
+
+    def test_subscript_pathlib_still_blocked(self):
+        """Subscript access obj['pathlib'] must still be blocked."""
+        result = validate_no_file_io_access("x['pathlib']")
+        assert result is not None
+        assert "pathlib" in result
+
+    def test_subscript_globals_still_blocked(self):
+        """Subscript access obj['__globals__'] must still be blocked."""
+        result = validate_no_dunder_access("x['__globals__']")
+        assert result is not None
+        assert "__globals__" in result
+
+    def test_subscript_ctypes_still_blocked(self):
+        """Subscript access obj['ctypes'] must still be blocked."""
+        result = validate_no_ffi_access("x['ctypes']")
+        assert result is not None
+        assert "ctypes" in result
+
+
 class TestJudgeBuiltinIsolation:
     """Tests for builtin isolation between user code and validation code.
 
