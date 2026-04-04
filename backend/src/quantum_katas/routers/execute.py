@@ -53,9 +53,13 @@ def _is_rate_limited(client_ip: str) -> tuple[bool, int]:
 
         if len(timestamps) >= _RATE_LIMIT_MAX_REQUESTS:
             _rate_limit_store[client_ip] = timestamps
-            # Retry-After: seconds until the oldest timestamp leaves the window
+            # Retry-After: seconds until the oldest timestamp leaves the window.
+            # Because timestamps[0] > cutoff is guaranteed by the prune above,
+            # (window - (now - timestamps[0])) is always positive, so + 1 gives
+            # at least 1 second of headroom.  The +1 avoids a race where the
+            # client retries exactly as the window boundary passes.
             retry_after = int(_RATE_LIMIT_WINDOW_SECONDS - (now - timestamps[0])) + 1
-            return True, max(retry_after, 1)
+            return True, retry_after
 
         timestamps.append(now)
         _rate_limit_store[client_ip] = timestamps
@@ -65,14 +69,27 @@ def _is_rate_limited(client_ip: str) -> tuple[bool, int]:
 def _get_client_ip(raw_request: Request) -> str:
     """Extract the real client IP from the request.
 
-    Falls back to a per-request unique token when the IP cannot be determined
-    so that a single unidentifiable client cannot consume the shared 'unknown'
-    rate-limit bucket and accidentally throttle other unidentifiable clients.
+    Returns the transport-level peer address when available.
+
+    When ``raw_request.client`` is ``None`` (e.g. unix-socket transports,
+    certain ASGI test adapters), there is no reliable identifier to use as a
+    rate-limit key.  We intentionally skip rate-limiting in this case by
+    assigning a per-request UUID.  This is an explicit design trade-off:
+
+    * Sharing a fixed ``"anon"`` bucket would cause unrelated anonymous
+      clients (e.g. CI runners behind NAT) to throttle each other.
+    * Blocking all anonymous clients would break local-dev setups that run
+      the ASGI app directly without a reverse proxy.
+    * In production the transport layer (nginx → uvicorn) always populates
+      ``raw_request.client``, so this branch is effectively unreachable.
+
+    If the deployment model changes (e.g. unix-socket proxy becomes common),
+    revisit this decision and consider forwarding ``X-Real-IP`` instead.
     """
     if raw_request.client is not None:
         return raw_request.client.host
-    # No transport-level peer: assign a unique key so each anonymous request
-    # does not share a rate-limit bucket with others.
+    # No transport-level peer address available: each anonymous request gets its
+    # own unique bucket, effectively bypassing rate limiting.  See docstring.
     return f"anon-{uuid.uuid4()}"
 
 

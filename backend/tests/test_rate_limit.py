@@ -64,6 +64,30 @@ class TestRateLimiting:
         assert int(retry_after) >= 1, "Retry-After must be a positive integer (seconds)"
         _rate_limit_store.clear()
 
+    def test_retry_after_does_not_exceed_window_plus_one(self) -> None:
+        """Retry-After must not exceed window_seconds + 1.
+
+        The formula ``int(window - (now - timestamps[0])) + 1`` guarantees
+        this because ``now - timestamps[0]`` is always > 0 (timestamps are
+        strictly in the past after the prune step).
+        """
+        _rate_limit_store.clear()
+        client_ip = "192.0.2.1"
+        # Inject exactly MAX_REQUESTS timestamps all at approximately "now"
+        # (worst case: all requests arrived at the same instant).
+        almost_now = time.monotonic() - 0.001
+        _rate_limit_store[client_ip] = [almost_now] * _RATE_LIMIT_MAX_REQUESTS
+
+        is_limited, retry_after = _is_rate_limited(client_ip)
+
+        assert is_limited, "Should be rate-limited when store is full"
+        # Upper bound: window + 1 (timestamps[0] ≈ now, so age ≈ 0)
+        assert retry_after <= _RATE_LIMIT_WINDOW_SECONDS + 1, (
+            f"Retry-After ({retry_after}s) must not exceed window+1 ({_RATE_LIMIT_WINDOW_SECONDS + 1}s)"
+        )
+        assert retry_after >= 1, "Retry-After must be at least 1 second"
+        _rate_limit_store.clear()
+
     def test_rate_limit_is_per_ip(self, client: TestClient) -> None:
         """Rate limit store is keyed by client IP (testclient uses 'testclient')."""
         _rate_limit_store.clear()
@@ -114,6 +138,32 @@ class TestRateLimitStaleEviction:
         assert "empty.ip.example" not in _rate_limit_store, "IP entry with empty timestamp list should be evicted"
         _rate_limit_store.clear()
 
+    def test_evicted_ip_can_make_requests_again(self) -> None:
+        """An IP evicted from the store must start a fresh rate-limit window.
+
+        Regression guard: eviction must not permanently block an IP or leave
+        corrupted state that causes incorrect rate-limit decisions.
+        """
+        _rate_limit_store.clear()
+        returning_ip = "198.51.100.10"
+
+        # Phase 1: inject a stale entry (simulates the IP going quiet for >2 min)
+        stale_ts = time.monotonic() - (_RATE_LIMIT_EVICTION_SECONDS + 1)
+        _rate_limit_store[returning_ip] = [stale_ts] * _RATE_LIMIT_MAX_REQUESTS
+
+        # Phase 2: the returning IP makes a new request — eviction fires, then
+        # the request is counted as the first in a fresh window.
+        is_limited, retry_after = _is_rate_limited(returning_ip)
+
+        assert not is_limited, (
+            "IP should NOT be rate-limited immediately after eviction "
+            "— its stale timestamps were pruned before the limit check"
+        )
+        assert retry_after == 0, "retry_after must be 0 when not rate-limited"
+        assert returning_ip in _rate_limit_store, "IP should have a fresh entry after first request"
+        assert len(_rate_limit_store[returning_ip]) == 1, "Store should contain exactly one fresh timestamp"
+        _rate_limit_store.clear()
+
 
 class TestGetClientIp:
     """Verify client IP extraction and fallback behaviour."""
@@ -129,6 +179,9 @@ class TestGetClientIp:
 
         This prevents different anonymous clients from sharing a single
         'unknown' rate-limit bucket and accidentally throttling each other.
+        In production (nginx → uvicorn) raw_request.client is always set, so
+        this fallback path is effectively unreachable.  See _get_client_ip
+        docstring for the full design rationale.
         """
         mock_request = MagicMock()
         mock_request.client = None
@@ -139,6 +192,32 @@ class TestGetClientIp:
         assert token1.startswith("anon-"), "Fallback token must start with 'anon-'"
         assert token2.startswith("anon-"), "Fallback token must start with 'anon-'"
         assert token1 != token2, "Each anonymous request must get a unique token"
+
+    def test_anon_client_is_not_rate_limited(self, client: TestClient) -> None:
+        """Intentional design: anonymous clients (client=None) bypass rate limiting.
+
+        Per-request UUID keys mean no single bucket accumulates 30 requests.
+        This is a documented trade-off — see _get_client_ip docstring.
+        In production raw_request.client is always populated by the reverse
+        proxy, so this branch is unreachable under normal deployment.
+        """
+        _rate_limit_store.clear()
+        # Exhaust the rate limit for a real IP first to confirm the limiter works.
+        with patch("quantum_katas.routers.execute.execute_code", _mock_execute_code):
+            for _ in range(_RATE_LIMIT_MAX_REQUESTS):
+                resp = client.post("/api/execute", json={"code": "print(1)"})
+                assert resp.status_code == 200
+
+        # Simulate how the endpoint behaves when _get_client_ip returns a fresh
+        # UUID per call (i.e. anonymous client path): the store never reaches
+        # MAX_REQUESTS for any single key.
+        anon_keys: list[str] = [f"anon-{__import__('uuid').uuid4()}" for _ in range(_RATE_LIMIT_MAX_REQUESTS + 5)]
+        for key in anon_keys:
+            is_limited, _ = _is_rate_limited(key)
+            assert not is_limited, (
+                "Each unique anon key should never be rate-limited (each key has at most 1 timestamp in the store)"
+            )
+        _rate_limit_store.clear()
 
 
 class TestCodeSizeLimitUnified:
