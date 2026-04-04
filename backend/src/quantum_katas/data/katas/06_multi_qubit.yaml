@@ -4,7 +4,7 @@ description: |
   2量子ビット系を作成し、それぞれ独立に操作・測定します。
   複数量子ビットの基本的な扱い方を学びましょう。
 difficulty: 6
-category: "basics"
+category: "entanglement"
 template_code: |
   import cirq
 
