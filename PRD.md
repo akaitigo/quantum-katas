@@ -27,11 +27,11 @@
 | 3 | Superposition | アダマールゲート、重ね合わせ状態 |
 | 4 | Measurement | 測定と確率、量子状態の崩壊 |
 | 5 | Phase Kick | Zゲート、位相変化 |
-| 6 | Entanglement | CNOTゲート、量子もつれ |
-| 7 | Bell States | ベル状態の4パターン |
-| 8 | Quantum Teleportation | 量子テレポーテーションプロトコル |
-| 9 | Deutsch's Algorithm | 最初の量子アルゴリズム |
-| 10 | Grover's Search | グローバー探索アルゴリズム入門 |
+| 6 | Multi-Qubit | 複数量子ビットの操作 |
+| 7 | CNOT Gate | CNOTゲート、量子もつれ |
+| 8 | Bell States | ベル状態の生成 |
+| 9 | Quantum Teleportation | 量子テレポーテーションプロトコル |
+| 10 | Deutsch-Jozsa | Deutsch-Jozsaアルゴリズム |
 
 各カタの構成:
 - **解説セクション**: 概念の図解（Bloch球、回路図）

@@ -17,7 +17,7 @@ router = APIRouter()
 class ValidateRequestBody(BaseModel):
     """Request body for kata validation."""
 
-    code: str = Field(..., min_length=1, max_length=50_000, description="User-submitted Python (Cirq) code")
+    code: str = Field(..., min_length=1, max_length=10_000, description="User-submitted Python (Cirq) code")
 
 
 @router.get("/katas")

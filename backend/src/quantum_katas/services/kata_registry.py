@@ -2,11 +2,16 @@
 
 Reads YAML files from the data/katas/ directory and provides
 lookup methods for the kata catalog.
+
+Thread-safety: uses a threading.Lock to ensure the global cache is
+initialised at most once, even when multiple ASGI worker threads call
+_get_cache concurrently.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 
 import yaml
@@ -18,6 +23,7 @@ logger = logging.getLogger(__name__)
 _KATAS_DIR = Path(__file__).resolve().parent.parent / "data" / "katas"
 
 _kata_cache: dict[str, Kata] | None = None
+_cache_lock = threading.Lock()
 
 
 def _load_katas() -> dict[str, Kata]:
@@ -54,11 +60,18 @@ def _load_katas() -> dict[str, Kata]:
 
 
 def _get_cache() -> dict[str, Kata]:
-    """Get or initialize the kata cache."""
+    """Get or initialize the kata cache (thread-safe)."""
     global _kata_cache  # noqa: PLW0603
-    if _kata_cache is None:
-        _kata_cache = _load_katas()
-    return _kata_cache
+    # Fast path: cache already initialised (no lock needed for reads of
+    # an immutable dict reference).
+    if _kata_cache is not None:
+        return _kata_cache
+    with _cache_lock:
+        # Double-checked locking: another thread may have initialised
+        # the cache while we were waiting for the lock.
+        if _kata_cache is None:
+            _kata_cache = _load_katas()
+        return _kata_cache
 
 
 def get_all_katas() -> list[KataSummary]:
@@ -104,4 +117,5 @@ def get_kata_raw(kata_id: str) -> Kata | None:
 def reset_cache() -> None:
     """Clear the kata cache (useful for testing)."""
     global _kata_cache  # noqa: PLW0603
-    _kata_cache = None
+    with _cache_lock:
+        _kata_cache = None
