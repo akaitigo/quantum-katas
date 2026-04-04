@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from quantum_katas.models.execution import ExecutionResult
 from quantum_katas.routers.execute import (
+    _RATE_LIMIT_EVICTION_SECONDS,
     _RATE_LIMIT_MAX_REQUESTS,
+    _RATE_LIMIT_WINDOW_SECONDS,
+    _get_client_ip,
+    _is_rate_limited,
     _rate_limit_store,
 )
 
@@ -44,6 +49,21 @@ class TestRateLimiting:
             assert "Rate limit exceeded" in resp.json()["detail"]
         _rate_limit_store.clear()
 
+    def test_rate_limit_returns_retry_after_header(self, client: TestClient) -> None:
+        """429 responses must include a Retry-After header with a positive integer."""
+        _rate_limit_store.clear()
+        with patch("quantum_katas.routers.execute.execute_code", _mock_execute_code):
+            for _ in range(_RATE_LIMIT_MAX_REQUESTS):
+                client.post("/api/execute", json={"code": "print(1)"})
+
+            resp = client.post("/api/execute", json={"code": "print(1)"})
+            assert resp.status_code == 429
+
+        retry_after = resp.headers.get("retry-after")
+        assert retry_after is not None, "Retry-After header must be present on 429"
+        assert int(retry_after) >= 1, "Retry-After must be a positive integer (seconds)"
+        _rate_limit_store.clear()
+
     def test_rate_limit_is_per_ip(self, client: TestClient) -> None:
         """Rate limit store is keyed by client IP (testclient uses 'testclient')."""
         _rate_limit_store.clear()
@@ -53,6 +73,72 @@ class TestRateLimiting:
             # Verify the store has an entry for the testclient IP
             assert len(_rate_limit_store) == 1
         _rate_limit_store.clear()
+
+
+class TestRateLimitStaleEviction:
+    """Verify that stale IP entries are evicted to prevent unbounded memory growth."""
+
+    def test_stale_ips_are_evicted_on_next_request(self) -> None:
+        """IP entries older than _RATE_LIMIT_EVICTION_SECONDS must be removed."""
+        _rate_limit_store.clear()
+
+        # Inject a stale IP entry whose last timestamp is beyond the eviction cutoff
+        stale_ts = time.monotonic() - (_RATE_LIMIT_EVICTION_SECONDS + 1)
+        _rate_limit_store["stale.ip.example"] = [stale_ts]
+
+        # Trigger eviction via a normal _is_rate_limited call
+        _is_rate_limited("trigger.ip.example")
+
+        assert "stale.ip.example" not in _rate_limit_store, "Stale IP entry should have been evicted"
+        _rate_limit_store.clear()
+
+    def test_active_ip_not_evicted(self) -> None:
+        """IP entries with recent activity must NOT be evicted."""
+        _rate_limit_store.clear()
+
+        recent_ts = time.monotonic() - 10  # 10 seconds ago — well within window
+        _rate_limit_store["active.ip.example"] = [recent_ts]
+
+        _is_rate_limited("trigger.ip.example")
+
+        assert "active.ip.example" in _rate_limit_store, "Active IP entry should NOT have been evicted"
+        _rate_limit_store.clear()
+
+    def test_empty_timestamp_list_is_evicted(self) -> None:
+        """IP entries with an empty timestamp list must be evicted."""
+        _rate_limit_store.clear()
+        _rate_limit_store["empty.ip.example"] = []
+
+        _is_rate_limited("trigger.ip.example")
+
+        assert "empty.ip.example" not in _rate_limit_store, "IP entry with empty timestamp list should be evicted"
+        _rate_limit_store.clear()
+
+
+class TestGetClientIp:
+    """Verify client IP extraction and fallback behaviour."""
+
+    def test_returns_host_when_client_present(self) -> None:
+        """Should return raw_request.client.host when client is available."""
+        mock_request = MagicMock()
+        mock_request.client.host = "203.0.113.42"
+        assert _get_client_ip(mock_request) == "203.0.113.42"
+
+    def test_returns_unique_token_when_client_is_none(self) -> None:
+        """When client is None, each call should return a distinct anon token.
+
+        This prevents different anonymous clients from sharing a single
+        'unknown' rate-limit bucket and accidentally throttling each other.
+        """
+        mock_request = MagicMock()
+        mock_request.client = None
+
+        token1 = _get_client_ip(mock_request)
+        token2 = _get_client_ip(mock_request)
+
+        assert token1.startswith("anon-"), "Fallback token must start with 'anon-'"
+        assert token2.startswith("anon-"), "Fallback token must start with 'anon-'"
+        assert token1 != token2, "Each anonymous request must get a unique token"
 
 
 class TestCodeSizeLimitUnified:
@@ -77,3 +163,11 @@ class TestCodeSizeLimitUnified:
         # Should NOT be 422; the code is within Pydantic limits.
         # It will likely fail validation (not valid Python), but not 422.
         assert response.status_code == 200
+
+    def test_rate_limit_window_constant_matches_expectation(self) -> None:
+        """Sanity check: _RATE_LIMIT_WINDOW_SECONDS should be 60."""
+        assert _RATE_LIMIT_WINDOW_SECONDS == 60
+
+    def test_eviction_window_is_double_rate_window(self) -> None:
+        """Eviction window should be 2x the rate limit window."""
+        assert _RATE_LIMIT_EVICTION_SECONDS == _RATE_LIMIT_WINDOW_SECONDS * 2
